@@ -27,8 +27,7 @@
   #sidebar {
     @apply fixed top-12 left-0 bottom-0 w-[280px] bg-white border-r border-gray-200
            overflow-y-auto overflow-x-hidden transition-transform duration-200
-           z-[90] py-2;
-    transition-timing-function: ease;
+           [transition-timing-function:ease] z-[90] py-2;
   }
 
   #sidebar.hidden {
@@ -191,22 +190,6 @@
            text-center text-red-600;
   }
 
-  .error-page {
-    @apply flex flex-col items-center justify-center py-16 px-6 text-center;
-  }
-
-  .error-code {
-    @apply text-5xl font-semibold text-gray-900 mb-2;
-  }
-
-  .error-message {
-    @apply text-lg text-gray-500 mb-6;
-  }
-
-  .error-page a {
-    @apply text-blue-600 no-underline hover:underline;
-  }
-
   /* =====================================================
      Go-Renderer Classes
      (emitted by server — cannot use inline utilities)
@@ -260,7 +243,7 @@
 
   /* Override prose link styles for special renderer links */
   .prose .broken-link {
-    @apply text-red-600 line-through no-underline;
+    @apply text-red-600 line-through;
   }
 
   .prose .broken-link:hover {

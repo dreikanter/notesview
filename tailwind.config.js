@@ -4,6 +4,14 @@ module.exports = {
     './web/static/index.html',
     './web/static/app.js',
   ],
+  safelist: [
+    // Emitted by Go server renderer — not in scanned content files
+    'broken-link',
+    'uid-link',
+    'task-checked',
+    'task-unchecked',
+    'task-tag',
+  ],
   theme: {
     extend: {
       screens: {
