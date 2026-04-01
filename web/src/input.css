@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  /* =====================================================
+     App Chrome
+     ===================================================== */
+
+  #topbar {
+    @apply fixed top-0 left-0 right-0 h-12 bg-white border-b border-gray-200
+           flex items-center px-3 gap-2 z-[100];
+  }
+
+  #sidebar-toggle {
+    @apply bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg
+           text-gray-500 rounded-md leading-none flex-shrink-0
+           hover:bg-gray-50 hover:text-gray-900;
+  }
+
+  #edit-btn {
+    @apply bg-transparent border border-gray-300 rounded-md cursor-pointer
+           px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0
+           hover:bg-gray-50 hover:border-gray-200;
+  }
+
+  #sidebar {
+    @apply fixed top-12 left-0 bottom-0 w-[280px] bg-white border-r border-gray-200
+           overflow-y-auto overflow-x-hidden transition-transform duration-200
+           ease-in-out z-[90] py-2;
+  }
+
+  #sidebar.hidden {
+    @apply -translate-x-full;
+  }
+
+  #content {
+    @apply mt-12 px-6 py-8 max-w-[900px] mx-auto min-h-[calc(100vh-3rem)];
+  }
+
+  @media (max-width: 768px) {
+    #content {
+      @apply px-4 py-5;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #content {
+      @apply px-3 py-4;
+    }
+  }
+
+  @media (min-width: 900px) {
+    #sidebar:not(.hidden) ~ #content {
+      margin-left: 280px;
+    }
+  }
+}
