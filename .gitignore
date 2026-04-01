@@ -1,4 +1,4 @@
 /notesview
 /bin/
 .superpowers/
-node_modules/
+/node_modules/
