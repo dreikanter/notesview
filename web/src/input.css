@@ -56,4 +56,65 @@
       margin-left: 280px;
     }
   }
+
+  /* =====================================================
+     Breadcrumbs
+     ===================================================== */
+
+  #breadcrumbs {
+    @apply flex-1 flex items-center gap-1 text-sm text-gray-500
+           overflow-hidden whitespace-nowrap;
+  }
+
+  .breadcrumb {
+    @apply text-blue-600 no-underline hover:underline;
+  }
+
+  .breadcrumb-sep {
+    @apply text-gray-400 select-none;
+  }
+
+  .breadcrumb-current {
+    @apply text-gray-900 overflow-hidden text-ellipsis;
+  }
+
+  /* =====================================================
+     Sidebar Tree
+     ===================================================== */
+
+  .sidebar-tree {
+    @apply list-none m-0 p-0;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-1 px-2 py-0.5 text-[13px] cursor-pointer
+           text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis
+           rounded-md mx-1 my-px hover:bg-gray-50;
+  }
+
+  .sidebar-item.active {
+    @apply bg-gray-50 font-semibold;
+  }
+
+  .sidebar-arrow {
+    @apply flex-shrink-0 w-4 text-[10px] text-gray-500 select-none
+           cursor-pointer text-center hover:text-gray-900;
+  }
+
+  .sidebar-label {
+    @apply overflow-hidden text-ellipsis cursor-pointer;
+  }
+
+  .sidebar-link {
+    @apply text-gray-900 no-underline overflow-hidden text-ellipsis
+           hover:text-blue-600;
+  }
+
+  .sidebar-subtree {
+    @apply list-none m-0 p-0 pl-4;
+  }
+
+  .sidebar-subtree.hidden {
+    display: none;
+  }
 }
