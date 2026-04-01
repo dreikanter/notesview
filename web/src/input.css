@@ -206,4 +206,68 @@
   .error-page a {
     @apply text-blue-600 no-underline hover:underline;
   }
+
+  /* =====================================================
+     Go-Renderer Classes
+     (emitted by server — cannot use inline utilities)
+     ===================================================== */
+
+  /* Broken wiki links */
+  .broken-link {
+    @apply text-red-600 line-through;
+  }
+
+  .broken-link:hover {
+    @apply underline;
+  }
+
+  /* UID auto-links */
+  .uid-link {
+    @apply text-blue-600 font-mono text-[0.9em];
+  }
+
+  /* Task checkboxes */
+  .task-checked {
+    @apply inline-flex items-center justify-center w-4 h-4 bg-green-700
+           text-white rounded-sm text-[11px] font-bold align-middle
+           mr-0.5 flex-shrink-0;
+  }
+
+  .task-unchecked {
+    @apply inline-block w-4 h-4 border-2 border-gray-300 rounded-sm
+           align-middle mr-0.5 bg-white flex-shrink-0;
+  }
+
+  .task-tag {
+    @apply inline-flex items-center bg-gray-50 text-gray-500 border
+           border-gray-200 text-[11px] font-medium px-1.5 py-px
+           rounded-full align-middle font-sans;
+  }
+
+  /* Goldmark chroma syntax highlighting wrapper */
+  .chroma {
+    @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
+           mb-4 font-mono text-[85%] leading-snug;
+  }
+
+  .chroma pre {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+  }
+
+  /* Override prose link styles for special renderer links */
+  .prose .broken-link {
+    @apply text-red-600 line-through no-underline;
+  }
+
+  .prose .broken-link:hover {
+    @apply underline;
+  }
+
+  .prose .uid-link {
+    @apply text-blue-600 font-mono text-[0.9em] no-underline;
+  }
 }
