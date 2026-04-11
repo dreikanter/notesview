@@ -1,11 +1,9 @@
 BIN := notesview
 BUILD_DIR := bin
-CSS_SRC := web/src/input.css
-CSS_OUT := web/static/style.css
 
-.PHONY: build test lint clean css css-watch all
+.PHONY: build test lint clean assets assets-watch all
 
-all: css build
+all: assets build
 
 build:
 	go build -o $(BUILD_DIR)/$(BIN) ./cmd/$(BIN)
@@ -16,11 +14,11 @@ test:
 lint:
 	golangci-lint run ./...
 
-css:
-	npx tailwindcss -i $(CSS_SRC) -o $(CSS_OUT) --minify
+assets:
+	npx vite build
 
-css-watch:
-	npx tailwindcss -i $(CSS_SRC) -o $(CSS_OUT) --watch
+assets-watch:
+	npx vite build --watch
 
 clean:
 	rm -rf $(BUILD_DIR)
