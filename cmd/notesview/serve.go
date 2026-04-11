@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/dreikanter/notesview/internal/logging"
 	"github.com/dreikanter/notesview/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +25,9 @@ func init() {
 	serveCmd.Flags().BoolP("open", "o", false, "open browser on start")
 	serveCmd.Flags().String("editor", "", "editor command (default: $NOTESVIEW_EDITOR, $VISUAL, $EDITOR)")
 	serveCmd.Flags().String("path", "", "notes root path or file (default: $NOTESVIEW_PATH, $NOTES_PATH, .)")
+	serveCmd.Flags().String("log-level", "", "log level: debug, info, warn, error (default: $NOTESVIEW_LOG_LEVEL, info)")
+	serveCmd.Flags().String("log-format", "", "log output format: text or json (default: $NOTESVIEW_LOG_FORMAT, text)")
+	serveCmd.Flags().String("log-file", "", "additional log sink file path (default: $NOTESVIEW_LOG_FILE)")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -32,6 +36,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	open, _ := cmd.Flags().GetBool("open")
 	editor, _ := cmd.Flags().GetString("editor")
 	path, _ := cmd.Flags().GetString("path")
+	logLevel, _ := cmd.Flags().GetString("log-level")
+	logFormat, _ := cmd.Flags().GetString("log-format")
+	logFile, _ := cmd.Flags().GetString("log-file")
 
 	if editor == "" {
 		for _, env := range []string{"NOTESVIEW_EDITOR", "VISUAL", "EDITOR"} {
@@ -55,17 +62,39 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	path = expandTilde(path)
 
+	if logLevel == "" {
+		logLevel = os.Getenv("NOTESVIEW_LOG_LEVEL")
+	}
+	if logFormat == "" {
+		logFormat = os.Getenv("NOTESVIEW_LOG_FORMAT")
+	}
+	if logFile == "" {
+		logFile = os.Getenv("NOTESVIEW_LOG_FILE")
+	}
+
+	logger, logCloser, err := logging.New(logging.Config{
+		Level:  logLevel,
+		Format: logFormat,
+		File:   logFile,
+	})
+	if err != nil {
+		return fmt.Errorf("configure logger: %w", err)
+	}
+	if logCloser != nil {
+		defer func() { _ = logCloser.Close() }()
+	}
+
 	root, initialFile, err := resolvePath(path)
 	if err != nil {
 		return err
 	}
 
-	srv, err := server.NewServer(root, editor)
+	srv, err := server.NewServer(root, editor, logger)
 	if err != nil {
 		return err
 	}
 	if err := srv.StartWatcher(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: file watcher failed to start: %v\n", err)
+		logger.Warn("file watcher failed to start", "err", err)
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -74,7 +103,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	baseURL := "http://" + listener.Addr().String()
-	fmt.Printf("notesview serving %s at %s\n", root, baseURL)
+	logger.Info("notesview serving", "root", root, "url", baseURL)
 
 	if open {
 		target := baseURL

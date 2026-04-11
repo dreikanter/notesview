@@ -3,10 +3,12 @@ package server
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notesview/internal/logging"
 	"github.com/dreikanter/notesview/internal/renderer"
 	"github.com/dreikanter/notesview/web"
 )
@@ -14,13 +16,21 @@ import (
 type Server struct {
 	root      string
 	editor    string
+	logger    *slog.Logger
 	renderer  *renderer.Renderer
 	index     *index.Index
 	sseHub    *SSEHub
 	templates *templateSet
 }
 
-func NewServer(root, editor string) (*Server, error) {
+// NewServer builds a Server rooted at the given notes directory. The logger
+// is optional: a nil logger is replaced with a discard logger so handlers
+// can always call s.logger.* without a nil check. Callers that want output
+// should pass a logger built via internal/logging.
+func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
+	if logger == nil {
+		logger = logging.Discard()
+	}
 	idx := index.New(root)
 	idx.Build()
 	tpls, err := loadTemplates()
@@ -30,11 +40,18 @@ func NewServer(root, editor string) (*Server, error) {
 	return &Server{
 		root:      root,
 		editor:    editor,
+		logger:    logger,
 		renderer:  renderer.NewRenderer(idx),
 		index:     idx,
 		sseHub:    NewSSEHub(root),
 		templates: tpls,
 	}, nil
+}
+
+// Logger returns the server's structured logger. Exposed so cmd wiring can
+// share one logger for both request logging and startup messages.
+func (s *Server) Logger() *slog.Logger {
+	return s.logger
 }
 
 func (s *Server) Routes() http.Handler {
@@ -50,7 +67,7 @@ func (s *Server) Routes() http.Handler {
 	staticFS, _ := fs.Sub(web.StaticFS, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
-	return rejectDirtyPaths(mux)
+	return logRequests(s.logger)(rejectDirtyPaths(mux))
 }
 
 // rejectDirtyPaths returns 400 for any request whose raw URL path is not

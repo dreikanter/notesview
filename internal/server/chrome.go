@@ -1,7 +1,7 @@
 package server
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -47,18 +47,18 @@ func buildBreadcrumbs(path string, isFile bool) []Crumb {
 // buildSidebarTree walks the notes root and produces the nested tree used
 // by the sidebar template. It includes all markdown files and directories,
 // skipping dotfiles.
-func buildSidebarTree(root string) []SidebarNode {
-	return readSidebarDir(root, "")
+func buildSidebarTree(root string, logger *slog.Logger) []SidebarNode {
+	return readSidebarDir(root, "", logger)
 }
 
-func readSidebarDir(root, rel string) []SidebarNode {
+func readSidebarDir(root, rel string, logger *slog.Logger) []SidebarNode {
 	absPath := filepath.Join(root, rel)
 	dirEntries, err := os.ReadDir(absPath)
 	if err != nil {
 		// Log once and degrade gracefully: a read failure in one subtree
 		// (permissions, broken symlink, etc.) shouldn't break the whole
 		// sidebar, but it also shouldn't be completely invisible.
-		log.Printf("notesview: sidebar: read %q: %v", absPath, err)
+		logger.Warn("sidebar read failed", "path", absPath, "err", err)
 		return nil
 	}
 
@@ -81,7 +81,7 @@ func readSidebarDir(root, rel string) []SidebarNode {
 			IsDir: de.IsDir(),
 		}
 		if de.IsDir() {
-			node.Children = readSidebarDir(root, entryRel)
+			node.Children = readSidebarDir(root, entryRel, logger)
 		}
 		nodes = append(nodes, node)
 	}

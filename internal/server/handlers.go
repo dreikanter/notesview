@@ -29,7 +29,7 @@ func (s *Server) sidebarFor(r *http.Request) []SidebarNode {
 	if r.Header.Get("HX-Request") != "" {
 		return nil
 	}
-	return buildSidebarTree(s.root)
+	return buildSidebarTree(s.root, s.logger)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
