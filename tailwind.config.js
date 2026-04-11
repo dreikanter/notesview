@@ -1,8 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    './web/static/index.html',
-    './web/static/app.js',
+    './web/src/**/*.{html,js}',
   ],
   safelist: [
     // Emitted by Go server renderer — not in scanned content files

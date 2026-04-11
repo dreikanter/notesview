@@ -53,7 +53,14 @@ notesview serve --editor=code             # use VS Code to open files
 ## Development
 
 ```sh
-make build   # build to bin/notesview
-make test    # run tests
-make lint    # run golangci-lint
+make all            # build web assets (Vite) and Go binary
+make assets         # rebuild web assets only
+make assets-watch   # rebuild web assets on source change
+make build          # build Go binary only (assumes assets already built)
+make test           # run Go tests
+make lint           # run golangci-lint
 ```
+
+The committed `web/static/` artifacts are built from `web/src/` via Vite, so `go install`
+and `go build` work without a Node toolchain. Contributors who touch files under `web/src/`
+must rerun `make assets` and commit the regenerated `web/static/` files.
