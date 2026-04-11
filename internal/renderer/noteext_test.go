@@ -70,10 +70,64 @@ func TestAutoLinkUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hrefFirst := `<a href="/view/2026/03/20260331_9201_todo.md" hx-boost="true" hx-target="#note-pane" class="uid-link"`
-	classFirst := `<a href="/view/2026/03/20260331_9201_todo.md" class="uid-link" hx-boost="true" hx-target="#note-pane"`
-	if !strings.Contains(html, hrefFirst) && !strings.Contains(html, classFirst) {
+	expected := `<a href="/view/2026/03/20260331_9201_todo.md" class="uid-link" hx-boost="true" hx-target="#note-pane"`
+	if !strings.Contains(html, expected) {
 		t.Errorf("UID auto-link anchor shape mismatch:\n%s", html)
+	}
+}
+
+// TestAutoLinkUIDAtLineStart pins the fact that a bare UID at the very
+// start of a paragraph (no preceding space) still auto-links. This was
+// a regression in the first pass of the goldmark extension which used
+// a whitespace trigger for an inline parser.
+func TestAutoLinkUIDAtLineStart(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	html, _, err := r.Render([]byte(`20260331_9201 is the primary note.`), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `href="/view/2026/03/20260331_9201_todo.md"`) {
+		t.Errorf("UID at line start not auto-linked:\n%s", html)
+	}
+	if !strings.Contains(html, `class="uid-link"`) {
+		t.Errorf("UID at line start missing uid-link class:\n%s", html)
+	}
+}
+
+// TestUIDInsideLinkLabelNotWrapped guards against wrapping a bare UID
+// in a nested <a> when the UID appears in the display text of an
+// existing markdown link. The AST walker should skip Text nodes whose
+// ancestor chain includes a Link.
+func TestUIDInsideLinkLabelNotWrapped(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	html, _, err := r.Render([]byte(`[see 20260331_9201 here](https://example.com)`), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be exactly one <a> tag (the outer markdown link),
+	// not two (outer + nested UID autolink).
+	if count := strings.Count(html, "<a "); count != 1 {
+		t.Errorf("expected 1 <a> tag, got %d:\n%s", count, html)
+	}
+}
+
+// TestAutoLinkUIDInCodeSpanSkipped pins that a bare UID inside an
+// inline code span is left as literal text, not wrapped in a link.
+func TestAutoLinkUIDInCodeSpanSkipped(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	html, _, err := r.Render([]byte("See `20260331_9201` in code."), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// UID is inside a <code> span; the walker should skip it entirely.
+	if strings.Contains(html, `class="uid-link"`) {
+		t.Errorf("UID inside code span should not be auto-linked:\n%s", html)
+	}
+	if !strings.Contains(html, "20260331_9201") {
+		t.Errorf("UID literal text should still appear in code span:\n%s", html)
 	}
 }
 
@@ -129,6 +183,35 @@ func TestExternalLinksStayPlain(t *testing.T) {
 // TestDirQueryThreading pins the per-request state contract: when the
 // renderer is given a dirQuery suffix, every internal /view/... href
 // it emits must carry that suffix.
+// TestDangerousURLsSanitized guards against malicious note content
+// smuggling javascript:/vbscript:/file:/data: URLs into the rendered
+// href. The renderer must rewrite these to "#" so clicking them is
+// inert, matching the security comment in NewRenderer about cloned
+// untrusted repos.
+func TestDangerousURLsSanitized(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	input := `[xss](javascript:alert(1)) [vb](vbscript:msgbox) [f](file:///etc/passwd) [d](data:text/html,<script>alert(1)</script>)`
+	html, _, err := r.Render([]byte(input), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"javascript:", "vbscript:", "file:", "data:text/html"} {
+		if strings.Contains(html, bad) {
+			t.Errorf("dangerous URL %q reached rendered href:\n%s", bad, html)
+		}
+	}
+	// An image data URL is allowed (links may legitimately point at
+	// base64 images in rare cases).
+	html2, _, err := r.Render([]byte(`[ok](data:image/png;base64,iVBORw0K)`), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html2, `data:image/png`) {
+		t.Errorf("data:image/png URL should be preserved, got: %s", html2)
+	}
+}
+
 func TestDirQueryThreading(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
@@ -143,8 +226,7 @@ func TestDirQueryThreading(t *testing.T) {
 	if !strings.Contains(html, `href="/view/2026/03/20260330_9198.md?dir=2026%2F03"`) {
 		t.Errorf("relative .md link dropped dirQuery:\n%s", html)
 	}
-	if !strings.Contains(html, `href="/view/2026/03/20260331_9201_todo.md?dir=2026%2F03" class="uid-link"`) &&
-		!strings.Contains(html, `class="uid-link" href="/view/2026/03/20260331_9201_todo.md?dir=2026%2F03"`) {
-		t.Errorf("bare UID auto-link dropped dirQuery (attr order may vary):\n%s", html)
+	if !strings.Contains(html, `href="/view/2026/03/20260331_9201_todo.md?dir=2026%2F03" class="uid-link"`) {
+		t.Errorf("bare UID auto-link dropped dirQuery:\n%s", html)
 	}
 }
