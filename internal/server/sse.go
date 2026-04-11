@@ -134,7 +134,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	s.sseHub.addClient(client)
 	defer s.sseHub.removeClient(client)
 
-	fmt.Fprintf(w, "data: %s\n\n", mustJSON(map[string]string{"type": "connected"}))
+	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", mustJSON(map[string]string{"type": "connected"}))
 	flusher.Flush()
 
 	ctx := r.Context()
@@ -143,7 +143,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case path := <-client.events:
-			fmt.Fprintf(w, "data: %s\n\n", mustJSON(map[string]string{
+			fmt.Fprintf(w, "event: change\ndata: %s\n\n", mustJSON(map[string]string{
 				"type": "change",
 				"path": path,
 			}))

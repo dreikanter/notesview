@@ -3,200 +3,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Why this file exists (and why it still uses @apply in places).
+ *
+ * The Tailwind team's recommended workflow is inline utility classes on
+ * markup. `@apply` is explicitly positioned as an escape hatch, not the
+ * happy path. For everything we render ourselves — topbar, sidebar chrome,
+ * breadcrumbs, frontmatter bar, directory listings — the utilities live
+ * directly on the elements in web/templates/.
+ *
+ * The rules below are the exceptions: they target HTML we don't author,
+ * so there's no template to put inline utilities on.
+ *
+ *   1. `.markdown-body pre`, `.markdown-body code`
+ *      Emitted by goldmark's HTML renderer. We get a raw string of HTML
+ *      back from Render() and inject it via {{ .HTML }}. There is no
+ *      template-side seam to add class attributes to the <pre>/<code>
+ *      tags, so we style them through descendant selectors.
+ *
+ *   2. `.broken-link`, `.uid-link`, `.task-checked`, `.task-unchecked`,
+ *      `.task-tag`
+ *      These class names are written into the HTML by the Go renderer
+ *      (see internal/renderer/tasks.go and notelinks.go). Tailwind's
+ *      content scanner never sees them in a template file, so they are
+ *      also listed in tailwind.config.js `safelist` to keep the JIT
+ *      from tree-shaking them out of the bundle.
+ *
+ *   3. `.prose .broken-link`, `.prose .broken-link:hover`, `.prose .uid-link`
+ *      @tailwindcss/typography applies generic link styles via `.prose a`
+ *      selectors that would otherwise win specificity over the renderer
+ *      classes above. These overrides put the renderer styles back.
+ *
+ * Raw CSS (outside the @layer block) handles the remaining cases that
+ * can't be expressed as inline utilities at all: pseudo-elements, a
+ * vendor pseudo, and a sibling-selector media query for the sidebar
+ * layout.
+ */
+
 @layer components {
-  /* =====================================================
-     App Chrome
-     ===================================================== */
-
-  #topbar {
-    @apply fixed top-0 left-0 right-0 h-12 bg-white border-b border-gray-200
-           flex items-center px-3 gap-2 z-[100];
+  .markdown-body pre {
+    @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
+           mb-4 text-[85%] leading-snug text-gray-900;
   }
 
-  #sidebar-toggle {
-    @apply bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg
-           text-gray-500 rounded-md leading-none flex-shrink-0
-           hover:bg-gray-50 hover:text-gray-900;
+  .markdown-body code {
+    @apply font-mono;
   }
 
-  #edit-btn {
-    @apply bg-transparent border border-gray-300 rounded-md cursor-pointer
-           px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0
-           hover:bg-gray-50 hover:border-gray-200;
-  }
-
-  #sidebar {
-    @apply fixed top-12 left-0 bottom-0 w-[280px] bg-white border-r border-gray-200
-           overflow-y-auto overflow-x-hidden transition-transform duration-200
-           [transition-timing-function:ease] z-[90] py-2;
-  }
-
-  #sidebar.hidden {
-    @apply -translate-x-full;
-  }
-
-  #content {
-    @apply mt-12 px-6 py-8 max-w-[900px] mx-auto min-h-[calc(100vh-3rem)];
-  }
-
-  @media (max-width: 768px) {
-    #content {
-      @apply px-4 py-5;
-    }
-  }
-
-  @media (max-width: 480px) {
-    #content {
-      @apply px-3 py-4;
-    }
-  }
-
-  @media (min-width: 900px) {
-    #sidebar:not(.hidden) ~ #content {
-      margin-left: 280px;
-    }
-  }
-
-  /* =====================================================
-     Breadcrumbs
-     ===================================================== */
-
-  #breadcrumbs {
-    @apply flex-1 flex items-center gap-1 text-sm text-gray-500
-           overflow-hidden whitespace-nowrap;
-  }
-
-  .breadcrumb {
-    @apply text-blue-600 no-underline hover:underline;
-  }
-
-  .breadcrumb-sep {
-    @apply text-gray-400 select-none;
-  }
-
-  .breadcrumb-current {
-    @apply text-gray-900 overflow-hidden text-ellipsis;
-  }
-
-  /* =====================================================
-     Sidebar Tree
-     ===================================================== */
-
-  .sidebar-tree {
-    @apply list-none m-0 p-0;
-  }
-
-  .sidebar-item {
-    @apply flex items-center gap-1 px-2 py-0.5 text-[13px] cursor-pointer
-           text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis
-           rounded-md mx-1 my-px hover:bg-gray-50;
-  }
-
-  .sidebar-item.active {
-    @apply bg-gray-50 font-semibold;
-  }
-
-  .sidebar-arrow {
-    @apply flex-shrink-0 w-4 text-[10px] text-gray-500 select-none
-           cursor-pointer text-center hover:text-gray-900;
-  }
-
-  .sidebar-label {
-    @apply overflow-hidden text-ellipsis cursor-pointer;
-  }
-
-  .sidebar-link {
-    @apply text-gray-900 no-underline overflow-hidden text-ellipsis
-           hover:text-blue-600;
-  }
-
-  .sidebar-subtree {
-    @apply list-none m-0 p-0 pl-4;
-  }
-
-  .sidebar-subtree.hidden {
-    display: none;
-  }
-
-  /* =====================================================
-     Frontmatter Bar
-     ===================================================== */
-
-  .frontmatter-bar {
-    @apply pb-4 mb-6 border-b border-gray-200;
-  }
-
-  .fm-title {
-    @apply text-[28px] font-semibold leading-tight text-gray-900 mt-0 mb-2;
-  }
-
-  .fm-description {
-    @apply text-[15px] text-gray-500 mt-0 mb-3;
-  }
-
-  .fm-tags {
-    @apply flex flex-wrap gap-1.5 m-0 p-0 list-none;
-  }
-
-  .fm-tag {
-    @apply inline-flex items-center bg-blue-100 text-blue-600 text-xs
-           font-medium px-2 py-0.5 rounded-full no-underline leading-relaxed
-           hover:bg-blue-200;
-  }
-
-  /* =====================================================
-     Directory Listing
-     ===================================================== */
-
-  .dir-listing {
-    @apply border border-gray-200 rounded-md overflow-hidden mb-4;
-  }
-
-  .dir-title {
-    @apply bg-gray-50 px-4 py-2 text-base font-semibold text-gray-900
-           border-b border-gray-200 m-0;
-  }
-
-  .dir-entries {
-    @apply list-none m-0 p-0;
-  }
-
-  .entry {
-    @apply border-b border-gray-100 last:border-b-0;
-  }
-
-  .entry a {
-    @apply flex items-center gap-2 px-4 py-2 text-sm text-blue-600
-           no-underline transition-colors duration-100 hover:bg-gray-50;
-  }
-
-  .entry-dir a {
-    @apply font-medium;
-  }
-
-  .empty {
-    @apply px-4 py-6 text-gray-500 text-center;
-  }
-
-  /* =====================================================
-     Loading / Error States
-     ===================================================== */
-
-  .loading {
-    @apply flex items-center justify-center py-12 px-6 text-sm text-gray-500;
-  }
-
-  .error {
-    @apply flex flex-col items-center justify-center py-16 px-6
-           text-center text-red-600;
-  }
-
-  /* =====================================================
-     Go-Renderer Classes
-     (emitted by server — cannot use inline utilities)
-     ===================================================== */
-
-  /* Broken wiki links */
   .broken-link {
     @apply text-red-600 line-through;
   }
@@ -205,12 +58,10 @@
     @apply underline;
   }
 
-  /* UID auto-links */
   .uid-link {
     @apply text-blue-600 font-mono text-[0.9em];
   }
 
-  /* Task checkboxes */
   .task-checked {
     @apply inline-flex items-center justify-center w-4 h-4 bg-green-700
            text-white rounded-sm text-[11px] font-bold align-middle
@@ -228,19 +79,6 @@
            rounded-full align-middle font-sans;
   }
 
-  /* Fenced code block wrapper (content tokens styled by highlight.js theme).
-     text-gray-900 overrides Tailwind Typography's .prose :where(pre) color,
-     which is designed for dark backgrounds and renders invisible on bg-gray-50. */
-  .markdown-body pre {
-    @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
-           mb-4 text-[85%] leading-snug text-gray-900;
-  }
-
-  .markdown-body code {
-    @apply font-mono;
-  }
-
-  /* Override prose link styles for special renderer links */
   .prose .broken-link {
     @apply text-red-600 line-through;
   }
@@ -252,4 +90,40 @@
   .prose .uid-link {
     @apply text-blue-600 font-mono text-[0.9em] no-underline;
   }
+}
+
+/* Sidebar collapse toggle. app.js flips this class on #sidebar-toggle click. */
+#sidebar.sidebar-collapsed {
+  transform: translateX(-100%);
+}
+
+/* Push #content to the right of the fixed sidebar on wide screens, but
+   only while the sidebar is actually visible. Uses a sibling selector
+   across id + state which can't be expressed with inline utilities. */
+@media (min-width: 900px) {
+  #sidebar:not(.sidebar-collapsed) ~ #content {
+    margin-left: 280px;
+  }
+}
+
+/* Custom disclosure arrow for sidebar directories. Uses a pseudo-element
+   so nothing inline would work. */
+.sidebar-arrow::before {
+  content: '\25B6';
+  display: inline-block;
+  transition: transform 0.1s ease;
+}
+
+.sidebar-dir details[open] > summary .sidebar-arrow::before {
+  transform: rotate(90deg);
+}
+
+/* Hide the default disclosure marker across browsers: Firefox honours
+   list-style: none on <summary>, WebKit/Blink needs the pseudo. */
+.sidebar-dir summary {
+  list-style: none;
+}
+
+.sidebar-dir summary::-webkit-details-marker {
+  display: none;
 }

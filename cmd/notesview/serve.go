@@ -60,7 +60,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	srv := server.NewServer(root, editor)
+	srv, err := server.NewServer(root, editor)
+	if err != nil {
+		return err
+	}
 	if err := srv.StartWatcher(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: file watcher failed to start: %v\n", err)
 	}

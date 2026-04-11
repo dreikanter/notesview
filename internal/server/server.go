@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -11,23 +12,29 @@ import (
 )
 
 type Server struct {
-	root     string
-	editor   string
-	renderer *renderer.Renderer
-	index    *index.Index
-	sseHub   *SSEHub
+	root      string
+	editor    string
+	renderer  *renderer.Renderer
+	index     *index.Index
+	sseHub    *SSEHub
+	templates *templateSet
 }
 
-func NewServer(root, editor string) *Server {
+func NewServer(root, editor string) (*Server, error) {
 	idx := index.New(root)
 	idx.Build()
-	return &Server{
-		root:     root,
-		editor:   editor,
-		renderer: renderer.NewRenderer(idx),
-		index:    idx,
-		sseHub:   NewSSEHub(root),
+	tpls, err := loadTemplates()
+	if err != nil {
+		return nil, fmt.Errorf("load templates: %w", err)
 	}
+	return &Server{
+		root:      root,
+		editor:    editor,
+		renderer:  renderer.NewRenderer(idx),
+		index:     idx,
+		sseHub:    NewSSEHub(root),
+		templates: tpls,
+	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
