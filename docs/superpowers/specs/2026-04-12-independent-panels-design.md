@@ -55,6 +55,10 @@ This causes five user-visible problems:
 - **Panel state memory across close/reopen.** Reopening the sidebar defaults
   to the current note's parent directory; no `localStorage` or cookie is used
   to remember a last-seen directory.
+- **Scroll restoration on back/forward navigation.** With two independent
+  scroll containers, the browser's native scroll restoration doesn't map
+  to a single viewport scroll. Each pane would need per-history-entry
+  scroll state. Out of scope for this refactor; see *Future work*.
 
 ## Architecture
 
@@ -105,10 +109,11 @@ Internal links — the ones that need HTMX — come from two places:
   `web/templates/breadcrumbs.html`). Each link declares its target:
   directory entries, breadcrumb segments, and the home icon use
   `hx-target="#sidebar"`; file entries use `hx-target="#note-pane"`.
-- **Renderer** (`internal/renderer/notelinks.go`). `note://` resolution,
-  relative `.md` rewriting, and bare-UID auto-linking all emit their
-  rewritten `<a>` tags with `hx-boost="true" hx-target="#note-pane"`
-  alongside the `href`.
+- **Renderer** (`internal/renderer/noteext.go`). The goldmark extension's
+  custom `NodeRenderer` for `*ast.Link` emits `hx-boost="true"
+  hx-target="#note-pane"` on any link whose final destination is
+  internal (starts with `/view/`). See *Renderer* below for the
+  extension's structure.
 
 ### External links are plain HTML
 
@@ -124,14 +129,15 @@ browser navigation. This is the point of annotating the internal links
 instead of the external ones: the specialness (HTMX behavior) lives with
 the special elements, and everything else is ordinary HTML.
 
-No regex pass is added to `notelinks.go` for external-link detection.
-`target="_blank"` / `rel="noopener"` is a separate product decision and
-is out of scope for this refactor.
+External links are not specially detected or rewritten anywhere; they
+fall through the goldmark extension's link renderer as-is. See
+*Renderer* for the mechanics. `target="_blank"` / `rel="noopener"` is
+a separate product decision and is out of scope for this refactor.
 
 ### Server response shapes
 
 Handlers check `HX-Request` and `HX-Target` headers and pick a response
-shape:
+shape. HTMX sends `HX-Target` as the raw id value, without the `#` prefix:
 
 - **`HX-Request: true` + `HX-Target: note-pane`** → render `note-pane`
   partial (the `<main id="note-pane">` subtree only, no layout, no sidebar).
@@ -143,20 +149,45 @@ shape:
 This is efficient: a sidebar navigation click does not run the markdown
 renderer, and a note click does not run the directory reader.
 
+**404 for partial note requests.** When a note doesn't exist and the
+request carries `HX-Target: note-pane`, the server responds with HTTP
+`200 OK` and a body containing the empty-state fragment (`<main
+id="note-pane">…"note not found"…</main>`). HTMX swaps it into the note
+pane, leaving the sidebar untouched. Returning a non-2xx status here
+would cause HTMX to skip the swap by default, leaving the user staring
+at the previous note with no indication the click did anything.
+Full-page requests (`/view/missing.md` typed directly in the URL bar)
+still respond with HTTP `404`, as today.
+
+**`dirQuery` on note-pane partial responses.** When the incoming
+request has `?dir=x/y` set, the note-pane partial it returns must have
+its wiki-links rewritten with `?dir=x/y` threaded through — same as a
+full-page render. Otherwise a wiki-link click from within a partial
+response would lose the sticky directory. `handleView` resolves the
+sticky directory identically for partial and full-page response paths
+and passes it to the renderer as `dirQuery`.
+
 ### Sidebar toggle: client-side visibility + opt-in refresh
 
 The hamburger is no longer an `<a>`. It becomes a `<button>` with a small JS
-handler:
+handler. The button carries `aria-expanded` and `aria-controls="sidebar"`
+so screen readers announce the state change.
 
 ```js
 function toggleSidebar() {
   const open = document.body.classList.toggle('sidebar-open');
+  hamburgerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   localStorage.setItem('notesview.sidebarOpen', open ? '1' : '0');
   if (open) {
     // Refresh sidebar for the current note to avoid staleness:
     // the sidebar DOM froze at whatever it rendered last, while the
     // user navigated notes via wiki-links with the sidebar hidden.
     htmx.ajax('GET', currentSidebarUrl(), { target: '#sidebar', swap: 'outerHTML' });
+  } else {
+    // Strip ?dir= from the URL so the closed state has no URL residue.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('dir');
+    history.replaceState(null, '', url.toString());
   }
 }
 ```
@@ -173,16 +204,54 @@ sidebar is showing the directory of the note they *started* with, not the
 note they're *currently* reading. The refresh on open fixes this. Closing
 stays pure client-side (no server involvement).
 
-The URL `currentSidebarUrl()` is built from the current note path plus
-`?dir=<note's-parent>`. Reopening always defaults to the note's parent
-directory regardless of any prior sticky state, per the "no hidden state"
-decision (see *URL model*).
+**`currentSidebarUrl()` definition.** The URL is built from the current
+note path plus `?dir=<note's-parent>`. When the current page has no note
+in view (the `/` empty-state case), it returns `/?dir=` (root). Reopening
+always defaults to the note's parent directory regardless of any prior
+sticky state, per the "no hidden state" decision (see *URL model*).
 
-**Close also updates the URL.** Closing the sidebar is pure client-side,
-but it also calls `history.replaceState` to strip `?dir=` from the current
-URL. This keeps the URL coherent with the visible state: a closed sidebar
-has no `?dir=` in the URL, an open sidebar has one (when a sticky
-directory is in play).
+```js
+function currentSidebarUrl() {
+  const notePath = document.body.dataset.notePath; // "" when no note
+  const parent = notePath ? notePath.replace(/[^/]*$/, '').replace(/\/$/, '') : '';
+  return (notePath ? `/view/${notePath}` : '/') + `?dir=${encodeURIComponent(parent)}`;
+}
+```
+
+`document.body.dataset.notePath` is set by the layout template on
+full-page renders and preserved across note-pane swaps (the note path is
+a data attribute on `#note-pane` and the toggle reads it from there;
+pick whichever element survives the swap, as long as it's consistent).
+
+### Browser back/forward semantics
+
+Every sidebar navigation click and every note click goes through
+`hx-boost`, which calls `history.pushState` with the request URL. This
+means:
+
+1. User opens `/view/a.md` (initial load).
+2. User clicks directory `x/y` in the sidebar → `history.pushState` to
+   `/view/a.md?dir=x/y`. Sidebar swap only.
+3. User clicks file `x/y/b.md` in the sidebar → `history.pushState` to
+   `/view/x/y/b.md?dir=x/y`. Note-pane swap only.
+4. User closes sidebar → `history.replaceState` to `/view/x/y/b.md`
+   (strips `?dir=`). No new history entry.
+5. User presses Back → browser navigates to `/view/a.md?dir=x/y`. HTMX's
+   `htmx:historyRestore` fires. We rely on the fact that `?dir=x/y` +
+   sidebar-closed (from `localStorage`) means: initial-load render,
+   sidebar DOM populated from URL but visually hidden by the
+   `.sidebar-closed` class. This is consistent with step 2's original
+   render minus the animation.
+6. Back again → `/view/a.md` → same, no `?dir=`, default sidebar on
+   reopen would be `/` (the note's parent).
+
+Closing the sidebar uses `replaceState` rather than `pushState` because
+visibility is a UI preference, not a navigational event — pressing Back
+after closing should take the user to the previous note, not to a
+"sidebar was open" state of the current note.
+
+The note pane does not currently persist its own scroll position across
+back/forward; see *Non-goals*.
 
 ### URL model
 
@@ -213,13 +282,14 @@ preference, not a piece of shareable state.
 outside the URL. Reopening the sidebar defaults to the current note's
 parent directory.
 
-**`linkQuery` threading in the renderer stays.** When the sidebar is open
+**`dirQuery` threading in the renderer stays.** When the sidebar is open
 and showing directory `x/y`, in-note wiki-links must be rewritten to include
 `?dir=x/y` so that clicking a wiki-link preserves the sticky directory in
 the URL. Otherwise refreshing after a wiki-link click would reset the
 sidebar to the new note's parent, silently losing the user's sticky
-position. `processNoteLinks` continues to take `linkQuery` and append it to
-internal-link hrefs.
+position. The goldmark extension's `ASTTransformer` reads the current
+`dirQuery` from `parser.Context` and appends it to every rewritten
+internal-link destination.
 
 ### SSE live-reload
 
@@ -230,7 +300,7 @@ SSE moves from `#content` to `#note-pane`:
       hx-ext="sse"
       sse-connect="/events?watch={{ .FilePath }}"
       hx-trigger="sse:change"
-      hx-get="/view/{{ .FilePath }}{{ .IndexQuery }}"
+      hx-get="/view/{{ .FilePath }}{{ .DirQuery }}"
       hx-target="#note-pane"
       hx-swap="outerHTML">
 ```
@@ -293,16 +363,86 @@ stable and lets the same URLs serve both full pages and partials.)
 
 ### Renderer
 
-- **`internal/renderer/notelinks.go`** — the three existing passes
-  (`note://` resolution, relative `.md` rewriting, bare-UID auto-linking)
-  continue to rewrite internal-link `href` values. Each pass is extended
-  so the generated `<a>` tag also carries `hx-boost="true"
-  hx-target="#note-pane"` alongside its `href`. The `linkQuery` parameter
-  stays — internal-link URL coherence still requires threading the current
-  `?dir=` into each rewritten href. No fourth pass is added; external
-  links are intentionally untouched and remain plain `<a href>`.
-- No changes to goldmark configuration. The HTMX attributes are attached
-  by the existing post-render regex pipeline.
+The regex-over-rendered-HTML approach in `internal/renderer/notelinks.go`
+is replaced with a goldmark extension that operates on the AST. The
+existing three passes become two well-defined extension points, and no
+HTML string manipulation happens at all.
+
+**`internal/renderer/noteext.go`** (new file, replacing `notelinks.go`)
+defines a goldmark extension with two pieces:
+
+1. **`parser.ASTTransformer`** — runs after parsing, before rendering.
+   Walks the AST with per-request state (index, `currentDir`, `dirQuery`)
+   pulled from `parser.Context`:
+   - For each `*ast.Link` whose `Destination` begins with `note://`:
+     look up the UID in the index. On hit, rewrite `Destination` to
+     `/view/<resolved>.md` + `dirQuery` suffix. On miss, set
+     `Destination` to `#`, and attach a `broken` flag via
+     `node.SetAttributeString("data-broken", true)` so the renderer can
+     emit `class="broken-link"` and the not-found title.
+   - For each `*ast.Link` whose `Destination` is relative and ends in
+     `.md`: resolve against `currentDir` with `path.Clean(path.Join(...))`,
+     rewrite `Destination` to `/view/<resolved>` + `dirQuery`. Skip if
+     the destination already contains `://` or starts with `/`.
+   - For each `*ast.Text` node: regex-match bare UIDs in the text's
+     raw byte content (no HTML in sight — Text node values are plain).
+     Where a match lands and the UID resolves, split the Text node into
+     `Text + Link + Text` and insert a new `*ast.Link` with
+     `Destination = "/view/<resolved>.md" + dirQuery` and a `uid` flag
+     attribute so the renderer can emit `class="uid-link"`.
+
+2. **Custom `NodeRenderer` for `ast.KindLink`** — registered with a
+   priority that overrides goldmark's default HTML link renderer. Emits
+   the opening `<a>` tag and decides whether to attach HTMX attributes
+   based on the final `Destination`:
+   - If `Destination` starts with `/view/` → internal link → emit
+     `hx-boost="true" hx-target="#note-pane"` alongside `href`.
+   - Otherwise → external link → emit plain `<a href>` with no HTMX
+     attributes. External links are handled by this same renderer
+     because goldmark sends all `*ast.Link` nodes through it; they
+     simply fall into the "not internal" branch.
+   - Honor `data-broken`: emit `class="broken-link"` and the title.
+   - Honor `uid`: emit `class="uid-link"`.
+   - Still emits the standard `title` attribute if `n.Title` is set.
+
+**Per-request state flow.** The renderer wrapper in
+`internal/renderer/renderer.go` stashes state in `parser.Context` before
+calling `md.Convert`:
+
+```go
+type noteLinkState struct {
+    idx        *index.Index
+    currentDir string
+    dirQuery   string // "?dir=a/b" or ""
+}
+
+var noteLinkStateKey = parser.NewContextKey()
+
+func (r *Renderer) Render(src []byte, currentDir, dirQuery string) ([]byte, *Frontmatter, error) {
+    pc := parser.NewContext()
+    pc.Set(noteLinkStateKey, &noteLinkState{r.idx, currentDir, dirQuery})
+    var buf bytes.Buffer
+    if err := r.md.Convert(src, &buf, parser.WithContext(pc)); err != nil {
+        return nil, nil, err
+    }
+    // frontmatter handling unchanged
+    ...
+}
+```
+
+One shared `goldmark.Markdown` instance is constructed at startup with
+the extension registered; no per-request allocation of parsers or
+renderers.
+
+**Parameter rename.** The parameter previously called `linkQuery` in
+`processNoteLinks` becomes `dirQuery` throughout to match the URL param
+name. Same semantics.
+
+**External-link handling is implicit.** The custom renderer sees every
+`*ast.Link`, including those pointing at `https://...`, `mailto:...`,
+`/static/foo.png`, etc. It simply emits plain `<a href>` for them —
+the "internal vs external" distinction is one `bytes.HasPrefix` check
+on `Destination`. No separate detection pass needed.
 
 ## Error handling
 
@@ -334,14 +474,23 @@ stable and lets the same URLs serve both full pages and partials.)
   sidebar emit URLs with the current `?dir=` preserved.
 - **`TestStickyNoteOnDirectoryClick`** — verify that directory entries in
   the sidebar emit URLs with the current note path preserved.
-- **`TestInternalLinkBoostAttributes`** — render a note containing
-  `[wiki](./rel.md)`, `[proto](note://20260101_1)`, and bare-UID text
-  `20260101_0001`, assert each emitted `<a>` has `hx-boost="true"` and
-  `hx-target="#note-pane"` alongside its rewritten `href`.
-- **`TestExternalLinksStayPlain`** — render a note containing
+- **`TestInternalLinkBoostAttributes`** — goldmark-convert a note
+  containing `[wiki](./rel.md)`, `[proto](note://20260101_1)`, and
+  bare-UID text `20260101_0001`, assert each emitted `<a>` has
+  `hx-boost="true"` and `hx-target="#note-pane"` alongside its rewritten
+  `href`.
+- **`TestExternalLinksStayPlain`** — goldmark-convert a note containing
   `[a](https://x)`, `[b](mailto:x@y)`, `[d](/static/foo.png)`, assert each
   emitted `<a>` has NO `hx-boost` or `hx-target` attribute and no other
-  HTMX attributes. The point is to pin the "external links are plain" rule.
+  HTMX attributes.
+- **`TestASTTransformerRewritesLinks`** — parse a note to an AST, run
+  the extension's transformer, walk the AST and assert `*ast.Link`
+  destinations have been rewritten (`note://` resolved, relative `.md`
+  resolved, bare UIDs auto-linked). Tests the transformer in isolation
+  from the renderer.
+- **`TestBrokenNoteLink`** — `[x](note://99999999_99999)` (non-existent
+  UID), assert the rendered `<a>` has `href="#"`, `class="broken-link"`,
+  and a "Note ... not found" title. No HTMX attributes.
 - **`TestLiveReloadTargetsNotePaneOnly`** — verify the SSE wiring on
   `#note-pane` emits `hx-target="#note-pane"` with the current `?dir=`
   preserved in the reload URL.
@@ -361,8 +510,10 @@ stable and lets the same URLs serve both full pages and partials.)
 - `internal/server/chrome.go`'s `indexQuery`, `toggleHref`, and
   `buildLayoutFields` functions are rewritten or removed: sidebar
   visibility is no longer a server concern, so `ToggleHref`, `IndexOpen`,
-  and `ShowToggle` drop from `layoutFields`. `IndexQuery` becomes just the
-  `?dir=` query the renderer threads into wiki-links.
+  and `ShowToggle` drop from `layoutFields`. The field and helper
+  previously called `IndexQuery` / `indexQuery` is renamed to
+  `DirQuery` / `dirQuery` throughout (server, template field, and the
+  goldmark extension parameter) to match the URL param name.
 - `dirLinkHref` and `fileLinkHref` become simpler: they no longer need to
   preserve the sidebar-open state because the sidebar-open state isn't in
   the URL anymore. `dirLinkHref` becomes `/view/<note>?dir=<new-dir>` and
@@ -383,3 +534,8 @@ stable and lets the same URLs serve both full pages and partials.)
 - **Last-seen directory memory.** If the "reopen defaults to note's parent"
   behavior proves annoying, persist last-shown dir in `localStorage` and
   restore on reopen. Intentionally not done in this pass.
+- **Per-pane scroll restoration.** Browser-native scroll restoration
+  assumes one scroll container per history entry; with two independent
+  scroll containers, back/forward nav restores neither. A future pass
+  can stash `(#sidebar scrollTop, #note-pane scrollTop)` per history
+  entry in `history.state` and restore on `popstate`.
