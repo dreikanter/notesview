@@ -17,6 +17,20 @@ module.exports = {
       screens: {
         sidebar: '900px',
       },
+      // @tailwindcss/typography wraps inline <code> in literal backticks via
+      // `code::before`/`code::after` content. Our markdown pipeline already
+      // renders fenced code without the fences, so surface backticks are
+      // noise. Override the typography theme to drop the pseudo-element
+      // content — this is the documented extension point.
+      // https://tailwindcss.com/docs/typography-plugin#customizing-the-css
+      typography: {
+        DEFAULT: {
+          css: {
+            'code::before': { content: 'none' },
+            'code::after': { content: 'none' },
+          },
+        },
+      },
     },
   },
   plugins: [require('@tailwindcss/typography')],
