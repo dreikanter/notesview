@@ -4,6 +4,15 @@
 @plugin '@tailwindcss/typography';
 
 /*
+ * Tailwind v4 auto-detects sources relative to the CSS file, but Vite's
+ * project root is `web/src/` — so the Go html/template markup in
+ * `web/templates/` is never scanned and none of the utility classes used
+ * inline on those elements (flex, mt-12, fixed, etc.) land in the bundle.
+ * Point Tailwind at the template directory explicitly.
+ */
+@source '../templates';
+
+/*
  * Renderer classes emitted by the Go HTML renderer (internal/renderer/*.go).
  * They don't appear in scanned source files, so tell Tailwind to generate
  * them unconditionally — v4's replacement for the old `safelist` config.
