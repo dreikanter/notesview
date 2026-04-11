@@ -36,6 +36,9 @@ notesview serve [flags]
 | `--port`, `-p` | auto | Port to listen on |
 | `--open`, `-o` | false | Open browser on start |
 | `--editor` | `$NOTESVIEW_EDITOR` → `$VISUAL` → `$EDITOR` | Editor command |
+| `--log-level` | `$NOTESVIEW_LOG_LEVEL` → `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `--log-format` | `$NOTESVIEW_LOG_FORMAT` → `text` | Log output format: `text` or `json` |
+| `--log-file` | `$NOTESVIEW_LOG_FILE` | Optional log file path (logs also go to stdout) |
 
 If `--path` points to a file, the server root is set to the file's parent directory and the file is opened directly in the browser (when `--open` is set).
 
