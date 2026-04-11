@@ -3,12 +3,12 @@
 package main_test
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dreikanter/notesview/internal/server"
@@ -37,10 +37,8 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Errorf("root: status = %d, want 302", resp.StatusCode)
 	}
 
-	// Test: view a file (JSON API)
-	req, _ := http.NewRequest("GET", ts.URL+"/view/2026/03/20260331_9201_todo.md", nil)
-	req.Header.Set("Accept", "application/json")
-	resp, err = http.DefaultClient.Do(req)
+	// Test: view a file renders HTML
+	resp, err = http.Get(ts.URL + "/view/2026/03/20260331_9201_todo.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,34 +47,30 @@ func TestIntegrationSmoke(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("view: status = %d, body: %s", resp.StatusCode, body)
 	}
-
-	var viewResp struct {
-		HTML        string `json:"html"`
-		Frontmatter struct {
-			Title string   `json:"title"`
-			Tags  []string `json:"tags"`
-		} `json:"frontmatter"`
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("view: content-type = %q, want text/html", ct)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	json.Unmarshal(body, &viewResp)
-
-	if viewResp.Frontmatter.Title != "Daily Todo" {
-		t.Errorf("title = %q", viewResp.Frontmatter.Title)
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Daily Todo") {
+		t.Errorf("view: expected title 'Daily Todo' in body")
 	}
-	if viewResp.HTML == "" {
-		t.Error("HTML is empty")
+	if !strings.Contains(bodyStr, `class="markdown-body`) {
+		t.Errorf("view: expected markdown-body wrapper in HTML")
 	}
 
 	// Test: browse root
-	req, _ = http.NewRequest("GET", ts.URL+"/browse/", nil)
-	req.Header.Set("Accept", "application/json")
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = http.Get(ts.URL + "/browse/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("browse: status = %d", resp.StatusCode)
+	}
+	browseBody, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(browseBody), `class="dir-listing"`) {
+		t.Errorf("browse: expected dir-listing in body")
 	}
 
 	// Test: raw endpoint
@@ -91,9 +85,7 @@ func TestIntegrationSmoke(t *testing.T) {
 	}
 
 	// Test: 404
-	req, _ = http.NewRequest("GET", ts.URL+"/view/nonexistent.md", nil)
-	req.Header.Set("Accept", "application/json")
-	resp, _ = http.DefaultClient.Do(req)
+	resp, _ = http.Get(ts.URL + "/view/nonexistent.md")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("404: status = %d", resp.StatusCode)
 	}

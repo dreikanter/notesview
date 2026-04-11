@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,26 +12,17 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-
-	"github.com/dreikanter/notesview/internal/renderer"
-	"github.com/dreikanter/notesview/web"
 )
 
-type ViewResponse struct {
-	HTML        string                `json:"html"`
-	Frontmatter *renderer.Frontmatter `json:"frontmatter,omitempty"`
-	Path        string                `json:"path"`
-}
-
 type BrowseEntry struct {
-	Name  string `json:"name"`
-	IsDir bool   `json:"isDir"`
-	Path  string `json:"path"`
+	Name  string
+	IsDir bool
+	Path  string
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
-		s.serveSPA(w, r)
+		http.NotFound(w, r)
 		return
 	}
 	readme := filepath.Join(s.root, "README.md")
@@ -41,24 +33,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/browse/", http.StatusFound)
 }
 
-func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
-	data, err := web.StaticFS.ReadFile("static/index.html")
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
-}
-
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
-	// Content negotiation: browser gets SPA shell, fetch gets JSON
-	if strings.Contains(r.Header.Get("Accept"), "text/html") &&
-		!strings.Contains(r.Header.Get("Accept"), "application/json") {
-		s.serveSPA(w, r)
-		return
-	}
-
 	reqPath := r.PathValue("filepath")
 	absPath, err := SafePath(s.root, reqPath)
 	if err != nil {
@@ -83,22 +58,31 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := ViewResponse{
-		HTML:        html,
-		Frontmatter: fm,
-		Path:        reqPath,
+	title := filepath.Base(reqPath)
+	if fm != nil && fm.Title != "" {
+		title = fm.Title
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+
+	view := ViewData{
+		layoutFields: layoutFields{
+			Title:       title,
+			Breadcrumbs: buildBreadcrumbs(reqPath, true),
+			Sidebar:     buildSidebarTree(s.root),
+			EditPath:    reqPath,
+		},
+		FilePath:    reqPath,
+		Frontmatter: fm,
+		HTML:        template.HTML(html),
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderView(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
-	if strings.Contains(r.Header.Get("Accept"), "text/html") &&
-		!strings.Contains(r.Header.Get("Accept"), "application/json") {
-		s.serveSPA(w, r)
-		return
-	}
-
 	reqPath := r.PathValue("dirpath")
 	absPath, err := SafePath(s.root, reqPath)
 	if err != nil {
@@ -142,8 +126,28 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 
 	go s.index.Build()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	browse := BrowseData{
+		layoutFields: layoutFields{
+			Title:       dirTitle(reqPath),
+			Breadcrumbs: buildBreadcrumbs(reqPath, false),
+			Sidebar:     buildSidebarTree(s.root),
+		},
+		DirPath: reqPath,
+		Entries: entries,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderBrowse(w, browse); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func dirTitle(reqPath string) string {
+	if reqPath == "" {
+		return ""
+	}
+	return reqPath
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {

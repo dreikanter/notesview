@@ -2,6 +2,8 @@ package renderer
 
 import (
 	"bytes"
+	"regexp"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	meta "github.com/yuin/goldmark-meta"
@@ -11,6 +13,14 @@ import (
 
 	"github.com/dreikanter/notesview/internal/index"
 )
+
+// leadingH1 matches the first <h1>…</h1> at the start of the document,
+// tolerating leading whitespace.
+var leadingH1 = regexp.MustCompile(`(?s)^\s*<h1[^>]*>\s*(.*?)\s*</h1>`)
+
+// tagStripper removes inline HTML tags from a heading's text content so we
+// can compare it against a plain frontmatter title.
+var tagStripper = regexp.MustCompile(`<[^>]+>`)
 
 type Frontmatter struct {
 	Title       string   `yaml:"title"`
@@ -74,6 +84,25 @@ func (r *Renderer) Render(source []byte, currentDir string) (string, *Frontmatte
 	if r.index != nil {
 		html = processNoteLinks(html, r.index, currentDir)
 	}
+	if fm != nil && fm.Title != "" {
+		html = stripRedundantTitle(html, fm.Title)
+	}
 
 	return html, fm, nil
+}
+
+// stripRedundantTitle removes a leading <h1> whose plain-text content equals
+// the frontmatter title, avoiding a duplicate heading when the frontmatter
+// bar already shows the title.
+func stripRedundantTitle(html, title string) string {
+	m := leadingH1.FindStringSubmatchIndex(html)
+	if m == nil {
+		return html
+	}
+	innerStart, innerEnd := m[2], m[3]
+	plain := tagStripper.ReplaceAllString(html[innerStart:innerEnd], "")
+	if strings.TrimSpace(plain) != strings.TrimSpace(title) {
+		return html
+	}
+	return html[m[1]:]
 }

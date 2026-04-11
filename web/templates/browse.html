@@ -1,0 +1,20 @@
+{{ define "content" }}
+<main id="content" data-dir-path="{{ .DirPath }}">
+  <div class="dir-listing">
+    <h2 class="dir-title">{{ if .DirPath }}{{ .DirPath }}{{ else }}Root{{ end }}</h2>
+    {{ if .Entries }}
+    <ul class="dir-entries">
+      {{ range .Entries }}
+      {{ if .IsDir }}
+      <li class="entry entry-dir"><a href="/browse/{{ .Path }}">&#128193; {{ .Name }}</a></li>
+      {{ else }}
+      <li class="entry entry-file"><a href="/view/{{ .Path }}">&#128196; {{ .Name }}</a></li>
+      {{ end }}
+      {{ end }}
+    </ul>
+    {{ else }}
+    <p class="empty">No files here.</p>
+    {{ end }}
+  </div>
+</main>
+{{ end }}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
@@ -11,22 +12,28 @@ import (
 )
 
 type Server struct {
-	root     string
-	editor   string
-	renderer *renderer.Renderer
-	index    *index.Index
-	sseHub   *SSEHub
+	root      string
+	editor    string
+	renderer  *renderer.Renderer
+	index     *index.Index
+	sseHub    *SSEHub
+	templates *templateSet
 }
 
 func NewServer(root, editor string) *Server {
 	idx := index.New(root)
 	idx.Build()
+	tpls, err := loadTemplates()
+	if err != nil {
+		log.Fatalf("notesview: %v", err)
+	}
 	return &Server{
-		root:     root,
-		editor:   editor,
-		renderer: renderer.NewRenderer(idx),
-		index:    idx,
-		sseHub:   NewSSEHub(root),
+		root:      root,
+		editor:    editor,
+		renderer:  renderer.NewRenderer(idx),
+		index:     idx,
+		sseHub:    NewSSEHub(root),
+		templates: tpls,
 	}
 }
 

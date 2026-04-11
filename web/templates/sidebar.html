@@ -1,0 +1,25 @@
+{{ define "sidebar" }}<ul class="sidebar-tree">
+  {{ range . }}{{ template "sidebar_node" . }}{{ end }}
+</ul>{{ end }}
+
+{{ define "sidebar_node" }}
+{{ if .IsDir }}
+<li class="sidebar-item sidebar-dir" data-path="{{ .Path }}">
+  <details>
+    <summary>
+      <span class="sidebar-arrow" aria-hidden="true"></span>
+      <span class="sidebar-label">{{ .Name }}</span>
+    </summary>
+    {{ if .Children }}
+    <ul class="sidebar-subtree">
+      {{ range .Children }}{{ template "sidebar_node" . }}{{ end }}
+    </ul>
+    {{ end }}
+  </details>
+</li>
+{{ else }}
+<li class="sidebar-item sidebar-file" data-path="{{ .Path }}">
+  <a class="sidebar-link" href="/view/{{ .Path }}" data-file-path="{{ .Path }}">{{ .Name }}</a>
+</li>
+{{ end }}
+{{ end }}

@@ -1,11 +1,11 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -24,22 +24,30 @@ func TestViewHandler(t *testing.T) {
 	handler := srv.Routes()
 
 	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md", nil)
-	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
 	}
-	var resp ViewResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid JSON: %v\nbody: %s", err, w.Body.String())
+	body := w.Body.String()
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
 	}
-	if resp.HTML == "" {
-		t.Error("HTML is empty")
+	// Frontmatter should be rendered by the layout.
+	if !strings.Contains(body, `class="fm-title"`) || !strings.Contains(body, "Todo") {
+		t.Errorf("expected frontmatter title in body, got: %s", body)
 	}
-	if resp.Frontmatter == nil || resp.Frontmatter.Title != "Todo" {
-		t.Errorf("frontmatter not parsed: %+v", resp.Frontmatter)
+	if !strings.Contains(body, `class="fm-tag"`) {
+		t.Errorf("expected frontmatter tags in body")
+	}
+	// The SSE wrapper should reference the file path.
+	if !strings.Contains(body, `sse-connect="/events?watch=2026/03/20260331_9201_todo.md"`) {
+		t.Errorf("expected sse-connect for file, got: %s", body)
+	}
+	// Sidebar tree should include the file.
+	if !strings.Contains(body, `data-file-path="2026/03/20260331_9201_todo.md"`) {
+		t.Errorf("expected sidebar link for file")
 	}
 }
 
@@ -48,7 +56,6 @@ func TestViewHandler404(t *testing.T) {
 	handler := srv.Routes()
 
 	req := httptest.NewRequest("GET", "/view/nonexistent.md", nil)
-	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -62,25 +69,22 @@ func TestBrowseHandler(t *testing.T) {
 	handler := srv.Routes()
 
 	req := httptest.NewRequest("GET", "/browse/", nil)
-	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	var entries []BrowseEntry
-	if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
+	body := w.Body.String()
+	if !strings.Contains(body, `class="dir-listing"`) {
+		t.Errorf("expected dir-listing in body")
 	}
-	hasDir := false
-	hasFile := false
-	for _, e := range entries {
-		if e.Name == "2026" && e.IsDir { hasDir = true }
-		if e.Name == "README.md" && !e.IsDir { hasFile = true }
+	if !strings.Contains(body, `href="/browse/2026"`) {
+		t.Errorf("expected browse link for 2026/, got: %s", body)
 	}
-	if !hasDir { t.Error("missing 2026/ directory") }
-	if !hasFile { t.Error("missing README.md") }
+	if !strings.Contains(body, `href="/view/README.md"`) {
+		t.Errorf("expected view link for README.md")
+	}
 }
 
 func TestRawHandler(t *testing.T) {
@@ -104,7 +108,6 @@ func TestPathTraversal(t *testing.T) {
 	handler := srv.Routes()
 
 	req := httptest.NewRequest("GET", "/view/../../../etc/passwd", nil)
-	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -127,5 +130,22 @@ func TestRootRedirect(t *testing.T) {
 	loc := w.Header().Get("Location")
 	if loc != "/view/README.md" {
 		t.Errorf("redirect location = %q, want /view/README.md", loc)
+	}
+}
+
+func TestViewStripsRedundantH1(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	// The markdown has `# Todo` which matches frontmatter title "Todo".
+	// The rendered markdown body should not contain a bare <h1>Todo</h1>.
+	md := body[strings.Index(body, `class="markdown-body`):]
+	if strings.Contains(md, "<h1") {
+		t.Errorf("expected <h1> to be stripped from markdown body when matching title, got: %s", md)
 	}
 }

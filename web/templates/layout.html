@@ -1,0 +1,31 @@
+{{ define "layout" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ if .Title }}{{ .Title }} — {{ end }}notesview</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body
+  hx-boost="true"
+  hx-target="#content"
+  hx-select="#content"
+  hx-swap="outerHTML"
+  hx-select-oob="#breadcrumbs:outerHTML">
+  <div id="app">
+    <header id="topbar">
+      <button id="sidebar-toggle" type="button" aria-label="Toggle sidebar">&#9776;</button>
+      {{ template "breadcrumbs" .Breadcrumbs }}
+      {{ if .EditPath }}
+      <button id="edit-btn" type="button" hx-post="/api/edit/{{ .EditPath }}" hx-swap="none">Edit</button>
+      {{ end }}
+    </header>
+    <aside id="sidebar" class="hidden" hx-preserve="true">
+      {{ template "sidebar" .Sidebar }}
+    </aside>
+    {{ template "content" . }}
+  </div>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
+{{ end }}

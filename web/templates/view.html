@@ -1,0 +1,27 @@
+{{ define "content" }}
+<main
+  id="content"
+  data-file-path="{{ .FilePath }}"
+  hx-ext="sse"
+  sse-connect="/events?watch={{ .FilePath }}"
+  hx-trigger="sse:change"
+  hx-get="/view/{{ .FilePath }}"
+  hx-target="#content"
+  hx-select="#content"
+  hx-swap="outerHTML">
+  {{ with .Frontmatter }}
+  {{ if or .Title .Description .Tags }}
+  <div class="frontmatter-bar">
+    {{ if .Title }}<h1 class="fm-title">{{ .Title }}</h1>{{ end }}
+    {{ if .Description }}<p class="fm-description">{{ .Description }}</p>{{ end }}
+    {{ if .Tags }}
+    <ul class="fm-tags">
+      {{ range .Tags }}<li class="fm-tag">{{ . }}</li>{{ end }}
+    </ul>
+    {{ end }}
+  </div>
+  {{ end }}
+  {{ end }}
+  <div class="markdown-body prose max-w-none">{{ .HTML }}</div>
+</main>
+{{ end }}

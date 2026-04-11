@@ -98,24 +98,39 @@
 
   .sidebar-arrow {
     @apply flex-shrink-0 w-4 text-[10px] text-gray-500 select-none
-           cursor-pointer text-center hover:text-gray-900;
+           text-center;
+  }
+
+  .sidebar-arrow::before {
+    content: '\25B6';
+    display: inline-block;
+    transition: transform 0.1s ease;
+  }
+
+  .sidebar-dir details[open] > summary .sidebar-arrow::before {
+    transform: rotate(90deg);
+  }
+
+  .sidebar-dir summary {
+    @apply flex items-center gap-1 cursor-pointer list-none
+           hover:text-gray-900;
+  }
+
+  .sidebar-dir summary::-webkit-details-marker {
+    display: none;
   }
 
   .sidebar-label {
-    @apply overflow-hidden text-ellipsis cursor-pointer;
+    @apply overflow-hidden text-ellipsis;
   }
 
   .sidebar-link {
-    @apply text-gray-900 no-underline overflow-hidden text-ellipsis
+    @apply block text-gray-900 no-underline overflow-hidden text-ellipsis
            hover:text-blue-600;
   }
 
   .sidebar-subtree {
     @apply list-none m-0 p-0 pl-4;
-  }
-
-  .sidebar-subtree.hidden {
-    display: none;
   }
 
   /* =====================================================

@@ -2,6 +2,7 @@
 module.exports = {
   content: [
     './web/src/**/*.{html,js}',
+    './web/templates/**/*.html',
   ],
   safelist: [
     // Emitted by Go server renderer — not in scanned content files
