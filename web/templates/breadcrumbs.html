@@ -1,6 +1,6 @@
-{{ define "breadcrumbs" }}<nav id="breadcrumbs" class="flex-1 flex items-center gap-1 text-sm text-gray-500 overflow-hidden whitespace-nowrap">
-  <a class="text-blue-600 no-underline hover:underline" href="/browse/" aria-label="Home">&#8962;</a>
-  {{ range . }}
+{{ define "breadcrumbs" }}<nav class="flex-1 flex items-center gap-1 text-sm text-gray-500 overflow-hidden whitespace-nowrap">
+  <a class="text-blue-600 no-underline hover:underline" href="{{ .HomeHref }}" aria-label="Home">&#8962;</a>
+  {{ range .Crumbs }}
   <span class="text-gray-400 select-none">/</span>
   {{ if .Current }}
   <span aria-current="page" class="text-gray-900 overflow-hidden text-ellipsis">{{ .Label }}</span>

@@ -5,31 +5,72 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"syscall"
 )
 
-type BrowseEntry struct {
-	Name  string
-	IsDir bool
-	Path  string
+// indexState extracts the index-panel state from the request query. For
+// now only the "dir" mode is supported. Returning the normalized query
+// string (either "" or "?index=dir") keeps downstream href construction a
+// single concatenation.
+//
+// This function is the one seam future index modes should extend: adding
+// "search" or "tag" would return a mode discriminator and normalize any
+// extra params (q, t) the mode needs.
+func indexState(r *http.Request) (open bool, query string) {
+	mode := r.URL.Query().Get("index")
+	if mode == "" {
+		return false, ""
+	}
+	// Only "dir" is understood today; unknown values collapse to closed
+	// rather than silently opening an empty panel.
+	if mode != "dir" {
+		return false, ""
+	}
+	return true, "?index=dir"
 }
 
-// sidebarFor returns the full sidebar tree for normal page loads, or nil for
-// HTMX-boosted requests. The layout's #sidebar element carries hx-preserve
-// and is never part of the swap target (#content), so boosted nav discards
-// any sidebar HTML the server produces — walking the notes tree for those
-// requests is pure waste on repositories with many files.
-func (s *Server) sidebarFor(r *http.Request) []SidebarNode {
-	if r.Header.Get("HX-Request") != "" {
-		return nil
+// toggleIndexHref returns the URL the hamburger should link to in order
+// to flip the index state on the current path. Preserving r.URL.Path
+// means the toggle reloads the same resource with just the query
+// adjusted — htmx boosts that as a fast swap.
+func toggleIndexHref(r *http.Request, open bool) string {
+	path := r.URL.Path
+	if open {
+		return path
 	}
-	return buildSidebarTree(s.root, s.logger)
+	return path + "?index=dir"
+}
+
+// buildLayoutFields assembles the common chrome every page needs. The
+// caller provides the editable path (if any) so the edit button's form
+// action is pre-resolved with the index query preserved.
+func (s *Server) buildLayoutFields(r *http.Request, title, editPath string) layoutFields {
+	open, query := indexState(r)
+	lf := layoutFields{
+		Title:      title,
+		EditPath:   editPath,
+		IndexOpen:  open,
+		IndexQuery: query,
+		ShowToggle: true,
+		ToggleHref: toggleIndexHref(r, open),
+	}
+	if editPath != "" {
+		lf.EditHref = "/api/edit/" + editPath
+	}
+	return lf
+}
+
+// viewSSEWatch is the value for the sse-connect attribute on view.html.
+// The SSE URL needs the note path percent-encoded because file names may
+// contain spaces, slashes, question marks, etc.
+func viewSSEWatch(filePath string) string {
+	return "/events?watch=" + url.QueryEscape(filePath)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -75,16 +116,34 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		title = fm.Title
 	}
 
+	lf := s.buildLayoutFields(r, title, reqPath)
+
+	// Build the index card for the note's parent directory when the
+	// panel is open. Skip the filesystem walk entirely when it's
+	// closed — the card is unused and every byte counts for large
+	// notes trees.
+	if lf.IndexOpen {
+		parentRel := filepath.Dir(reqPath)
+		if parentRel == "." {
+			parentRel = ""
+		}
+		card, err := s.buildDirIndex(parentRel, lf.IndexQuery)
+		if err != nil {
+			// A read failure in the parent dir shouldn't 500 the whole
+			// page — log and render without the card.
+			s.logger.Warn("index card read failed", "path", parentRel, "err", err)
+		} else {
+			lf.IndexCard = card
+		}
+	}
+
 	view := ViewData{
-		layoutFields: layoutFields{
-			Title:       title,
-			Breadcrumbs: buildBreadcrumbs(reqPath, true),
-			Sidebar:     s.sidebarFor(r),
-			EditPath:    reqPath,
-		},
-		FilePath:    reqPath,
-		Frontmatter: fm,
-		HTML:        template.HTML(html),
+		layoutFields: lf,
+		FilePath:     reqPath,
+		Frontmatter:  fm,
+		HTML:         template.HTML(html),
+		SSEWatch:     viewSSEWatch(reqPath),
+		ViewHref:     "/view/" + reqPath,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -102,8 +161,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dirEntries, err := os.ReadDir(absPath)
-	if err != nil {
+	if _, err := os.Stat(absPath); err != nil {
 		if os.IsNotExist(err) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -112,40 +170,26 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var entries []BrowseEntry
-	for _, de := range dirEntries {
-		name := de.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		if !de.IsDir() && !strings.HasSuffix(name, ".md") {
-			continue
-		}
-		entryPath := filepath.Join(reqPath, name)
-		entries = append(entries, BrowseEntry{
-			Name:  name,
-			IsDir: de.IsDir(),
-			Path:  entryPath,
-		})
-	}
+	lf := s.buildLayoutFields(r, dirTitle(reqPath), "")
+	// The browse page IS the index card — it's always open here
+	// regardless of the ?index query, otherwise the page would be
+	// empty. The hamburger has no meaning on browse pages and the
+	// template hides it.
+	lf.IndexOpen = true
+	lf.ShowToggle = false
 
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].IsDir != entries[j].IsDir {
-			return entries[i].IsDir
-		}
-		return entries[i].Name < entries[j].Name
-	})
+	card, err := s.buildDirIndex(reqPath, lf.IndexQuery)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	lf.IndexCard = card
 
 	go s.index.Build()
 
 	browse := BrowseData{
-		layoutFields: layoutFields{
-			Title:       dirTitle(reqPath),
-			Breadcrumbs: buildBreadcrumbs(reqPath, false),
-			Sidebar:     s.sidebarFor(r),
-		},
-		DirPath: reqPath,
-		Entries: entries,
+		layoutFields: lf,
+		DirPath:      reqPath,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -153,6 +197,27 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// buildDirIndex assembles an IndexCard in directory mode for a path
+// relative to the notes root. The caller is responsible for URL-level
+// access control (SafePath) — this helper only walks an already-validated
+// directory.
+func (s *Server) buildDirIndex(relPath, indexQuery string) (*IndexCard, error) {
+	absPath, err := SafePath(s.root, relPath)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := readDirEntries(absPath, relPath, indexQuery)
+	if err != nil {
+		return nil, err
+	}
+	return &IndexCard{
+		Mode:        "dir",
+		Breadcrumbs: buildBreadcrumbs(relPath, false, indexQuery),
+		Entries:     entries,
+		Empty:       "No files here.",
+	}, nil
 }
 
 func dirTitle(reqPath string) string {

@@ -2,27 +2,30 @@
 <main
   id="content"
   data-file-path="{{ .FilePath }}"
-  class="mt-12 px-6 py-8 max-w-[900px] mx-auto min-h-[calc(100vh-3rem)] max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4"
+  class="content-wrapper mt-12 px-6 py-8 min-h-[calc(100vh-3rem)] flex justify-center gap-4 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4"
   hx-ext="sse"
-  sse-connect="/events?watch={{ .FilePath | urlquery }}"
+  sse-connect="{{ .SSEWatch }}"
   hx-trigger="sse:change"
-  hx-get="/view/{{ .FilePath }}"
+  hx-get="{{ .ViewHref }}"
   hx-target="#content"
   hx-select="#content"
   hx-swap="outerHTML">
-  {{ with .Frontmatter }}
-  {{ if or .Title .Description .Tags }}
-  <div class="pb-4 mb-6 border-b border-gray-200">
-    {{ if .Title }}<h1 class="text-[28px] font-semibold leading-tight text-gray-900 mt-0 mb-2">{{ .Title }}</h1>{{ end }}
-    {{ if .Description }}<p class="text-[15px] text-gray-500 mt-0 mb-3">{{ .Description }}</p>{{ end }}
-    {{ if .Tags }}
-    <ul class="flex flex-wrap gap-1.5 m-0 p-0 list-none">
-      {{ range .Tags }}<li class="inline-flex items-center bg-blue-100 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed hover:bg-blue-200">{{ . }}</li>{{ end }}
-    </ul>
+  {{ if .IndexCard }}{{ template "index_card" .IndexCard }}{{ end }}
+  <article class="note-card flex-1 min-w-0 max-w-[900px] border border-gray-200 rounded-md bg-white px-6 py-6 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
+    {{ with .Frontmatter }}
+    {{ if or .Title .Description .Tags }}
+    <div class="pb-4 mb-6 border-b border-gray-200">
+      {{ if .Title }}<h1 class="text-[28px] font-semibold leading-tight text-gray-900 mt-0 mb-2">{{ .Title }}</h1>{{ end }}
+      {{ if .Description }}<p class="text-[15px] text-gray-500 mt-0 mb-3">{{ .Description }}</p>{{ end }}
+      {{ if .Tags }}
+      <ul class="flex flex-wrap gap-1.5 m-0 p-0 list-none">
+        {{ range .Tags }}<li class="inline-flex items-center bg-blue-100 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed hover:bg-blue-200">{{ . }}</li>{{ end }}
+      </ul>
+      {{ end }}
+    </div>
     {{ end }}
-  </div>
-  {{ end }}
-  {{ end }}
-  <div class="markdown-body prose max-w-none">{{ .HTML }}</div>
+    {{ end }}
+    <div class="markdown-body prose max-w-none">{{ .HTML }}</div>
+  </article>
 </main>
 {{ end }}

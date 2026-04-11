@@ -49,9 +49,72 @@ func TestViewHandler(t *testing.T) {
 	if !strings.Contains(body, `sse-connect="/events?watch=2026%2F03%2F20260331_9201_todo.md"`) {
 		t.Errorf("expected sse-connect for file, got: %s", body)
 	}
-	// Sidebar tree should include the file.
+	// The #content wrapper carries the file path for client-side code
+	// (SSE live reload, highlight.js scoping).
 	if !strings.Contains(body, `data-file-path="2026/03/20260331_9201_todo.md"`) {
-		t.Errorf("expected sidebar link for file")
+		t.Errorf("expected data-file-path on content wrapper")
+	}
+	// With no ?index query the index card must not be rendered, so the
+	// note card is centered alone.
+	if strings.Contains(body, `class="index-card`) {
+		t.Errorf("expected no index card when ?index is absent, got: %s", body)
+	}
+	// The note body is always wrapped in a card.
+	if !strings.Contains(body, `class="note-card`) {
+		t.Errorf("expected note-card wrapper, got: %s", body)
+	}
+}
+
+// TestViewHandlerWithIndex covers the 2-panel mode: when `?index=dir`
+// is set, the index card for the note's parent directory is rendered
+// alongside the note card, and every link in the card preserves the
+// index query string so navigating between siblings keeps the panel
+// open.
+func TestViewHandlerWithIndex(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md?index=dir", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `class="index-card`) {
+		t.Errorf("expected index card with ?index=dir, got: %s", body)
+	}
+	// Sibling links should carry the index query so toggling persists.
+	if !strings.Contains(body, `href="/view/2026/03/20260331_9201_todo.md?index=dir"`) {
+		t.Errorf("expected sibling file link to preserve ?index=dir")
+	}
+	// Breadcrumb intermediate segments should also preserve the query.
+	if !strings.Contains(body, `href="/browse/2026?index=dir"`) {
+		t.Errorf("expected breadcrumb link to preserve ?index=dir, got: %s", body)
+	}
+	// Hamburger toggles index off by linking to the path without query.
+	if !strings.Contains(body, `id="index-toggle"`) ||
+		!strings.Contains(body, `href="/view/2026/03/20260331_9201_todo.md"`) {
+		t.Errorf("expected toggle href to strip ?index when open, got: %s", body)
+	}
+}
+
+// TestViewHandlerToggleClosed pins the inverse: when the index is closed
+// the hamburger link must point at the same path with ?index=dir so a
+// click opens the panel.
+func TestViewHandlerToggleClosed(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/view/README.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `id="index-toggle"`) ||
+		!strings.Contains(body, `href="/view/README.md?index=dir"`) {
+		t.Errorf("expected toggle href to add ?index=dir when closed, got: %s", body)
 	}
 }
 
@@ -88,6 +151,15 @@ func TestBrowseHandler(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/view/README.md"`) {
 		t.Errorf("expected view link for README.md")
+	}
+	// Browse page IS the index card so it's always rendered.
+	if !strings.Contains(body, `class="index-card`) {
+		t.Errorf("expected index card on browse page")
+	}
+	// The hamburger has no meaning on browse pages (nothing to reveal)
+	// and must not be rendered.
+	if strings.Contains(body, `id="index-toggle"`) {
+		t.Errorf("expected no index toggle on browse page")
 	}
 }
 

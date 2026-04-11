@@ -14,32 +14,35 @@
   hx-select-oob="#topbar-actions:outerHTML">
   <div id="app">
     <header id="topbar" class="fixed top-0 left-0 right-0 h-12 bg-white border-b border-gray-200 flex items-center px-3 gap-2 z-[100]">
-      <button
-        id="sidebar-toggle"
-        type="button"
-        aria-label="Toggle sidebar"
-        class="bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg text-gray-500 rounded-md leading-none flex-shrink-0 hover:bg-gray-50 hover:text-gray-900">&#9776;</button>
-      <div id="topbar-actions" class="flex-1 flex items-center gap-2 overflow-hidden">
-        {{ template "breadcrumbs" .Breadcrumbs }}
-        {{ if .EditPath }}
-        <button
-          id="edit-btn"
-          type="button"
-          hx-post="/api/edit/{{ .EditPath }}"
-          hx-swap="none"
-          class="bg-transparent border border-gray-300 rounded-md cursor-pointer px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0 hover:bg-gray-50 hover:border-gray-200">Edit</button>
-        {{ end }}
-      </div>
+      {{ template "topbar_actions" . }}
     </header>
-    <aside
-      id="sidebar"
-      class="sidebar-collapsed fixed top-12 left-0 bottom-0 w-[280px] bg-white border-r border-gray-200 overflow-y-auto overflow-x-hidden transition-transform duration-200 [transition-timing-function:ease] z-[90] py-2"
-      hx-preserve="true">
-      {{ template "sidebar" .Sidebar }}
-    </aside>
     {{ template "content" . }}
   </div>
   <script type="module" src="/static/app.js"></script>
 </body>
 </html>
+{{ end }}
+
+{{ define "topbar_actions" }}<div id="topbar-actions" class="flex-1 flex items-center gap-2 overflow-hidden">
+  {{ if .ShowToggle }}
+  <a
+    id="index-toggle"
+    href="{{ .ToggleHref }}"
+    aria-label="Toggle files index"
+    aria-pressed="{{ if .IndexOpen }}true{{ else }}false{{ end }}"
+    class="bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg text-gray-500 rounded-md leading-none flex-shrink-0 no-underline hover:bg-gray-50 hover:text-gray-900">&#9776;</a>
+  {{ else }}
+  <span class="w-8 flex-shrink-0" aria-hidden="true"></span>
+  {{ end }}
+  <div class="flex-1 flex items-center justify-end gap-2 overflow-hidden">
+    {{ if .EditPath }}
+    <button
+      id="edit-btn"
+      type="button"
+      hx-post="{{ .EditHref }}"
+      hx-swap="none"
+      class="bg-transparent border border-gray-300 rounded-md cursor-pointer px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0 hover:bg-gray-50 hover:border-gray-200">Edit</button>
+    {{ end }}
+  </div>
+</div>
 {{ end }}

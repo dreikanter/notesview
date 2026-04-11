@@ -24,7 +24,7 @@
  *
  * The Tailwind team's recommended workflow is inline utility classes on
  * markup. `@apply` is explicitly positioned as an escape hatch, not the
- * happy path. For everything we render ourselves — topbar, sidebar chrome,
+ * happy path. For everything we render ourselves — topbar, index card,
  * breadcrumbs, frontmatter bar, directory listings — the utilities live
  * directly on the elements in web/templates/.
  *
@@ -49,11 +49,6 @@
  *      @tailwindcss/typography applies generic link styles via `.prose a`
  *      selectors that would otherwise win specificity over the renderer
  *      classes above. These overrides put the renderer styles back.
- *
- * Raw CSS (outside the @layer block) handles the remaining cases that
- * can't be expressed as inline utilities at all: pseudo-elements, a
- * vendor pseudo, and a sibling-selector media query for the sidebar
- * layout.
  */
 
 /*
@@ -118,40 +113,4 @@
   .prose .uid-link {
     @apply text-blue-600 font-mono text-[0.9em] no-underline;
   }
-}
-
-/* Sidebar collapse toggle. app.js flips this class on #sidebar-toggle click. */
-#sidebar.sidebar-collapsed {
-  transform: translateX(-100%);
-}
-
-/* Push #content to the right of the fixed sidebar on wide screens, but
-   only while the sidebar is actually visible. Uses a sibling selector
-   across id + state which can't be expressed with inline utilities. */
-@media (min-width: 900px) {
-  #sidebar:not(.sidebar-collapsed) ~ #content {
-    margin-left: 280px;
-  }
-}
-
-/* Custom disclosure arrow for sidebar directories. Uses a pseudo-element
-   so nothing inline would work. */
-.sidebar-arrow::before {
-  content: '\25B6';
-  display: inline-block;
-  transition: transform 0.1s ease;
-}
-
-.sidebar-dir details[open] > summary .sidebar-arrow::before {
-  transform: rotate(90deg);
-}
-
-/* Hide the default disclosure marker across browsers: Firefox honours
-   list-style: none on <summary>, WebKit/Blink needs the pseudo. */
-.sidebar-dir summary {
-  list-style: none;
-}
-
-.sidebar-dir summary::-webkit-details-marker {
-  display: none;
 }
