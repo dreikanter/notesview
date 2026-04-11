@@ -1,3 +1,5 @@
+import hljs from 'highlight.js/lib/common';
+
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
@@ -159,6 +161,11 @@
 
     var content = document.getElementById('content');
     content.innerHTML = parts.join('');
+
+    // Syntax-highlight fenced code blocks
+    content.querySelectorAll('.markdown-body pre > code').forEach(function (el) {
+      hljs.highlightElement(el);
+    });
 
     // Intercept internal /view/ links inside the rendered markdown
     content.querySelectorAll('.markdown-body a[href^="/view/"]').forEach(function (a) {

@@ -1,3 +1,4 @@
+@import 'highlight.js/styles/github.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -227,18 +228,14 @@
            rounded-full align-middle font-sans;
   }
 
-  /* Goldmark chroma syntax highlighting wrapper */
-  .chroma {
+  /* Fenced code block wrapper (content tokens styled by highlight.js theme) */
+  .markdown-body pre {
     @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
-           mb-4 font-mono text-[85%] leading-snug;
+           mb-4 text-[85%] leading-snug;
   }
 
-  .chroma pre {
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 0;
-    overflow: visible;
+  .markdown-body code {
+    @apply font-mono;
   }
 
   /* Override prose link styles for special renderer links */
