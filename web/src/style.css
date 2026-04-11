@@ -1,7 +1,14 @@
+@import 'tailwindcss';
 @import 'highlight.js/styles/github.css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+@plugin '@tailwindcss/typography';
+
+/*
+ * Renderer classes emitted by the Go HTML renderer (internal/renderer/*.go).
+ * They don't appear in scanned source files, so tell Tailwind to generate
+ * them unconditionally — v4's replacement for the old `safelist` config.
+ */
+@source inline('broken-link uid-link task-checked task-unchecked task-tag');
 
 /*
  * Why this file exists (and why it still uses @apply in places).
@@ -26,8 +33,8 @@
  *      These class names are written into the HTML by the Go renderer
  *      (see internal/renderer/tasks.go and notelinks.go). Tailwind's
  *      content scanner never sees them in a template file, so they are
- *      also listed in tailwind.config.js `safelist` to keep the JIT
- *      from tree-shaking them out of the bundle.
+ *      also listed in `@source inline(...)` above to keep the JIT from
+ *      tree-shaking them out of the bundle.
  *
  *   3. `.prose .broken-link`, `.prose .broken-link:hover`, `.prose .uid-link`
  *      @tailwindcss/typography applies generic link styles via `.prose a`
@@ -39,6 +46,18 @@
  * vendor pseudo, and a sibling-selector media query for the sidebar
  * layout.
  */
+
+/*
+ * @tailwindcss/typography wraps inline <code> in literal backticks via
+ * `code::before`/`code::after` content. Our markdown pipeline already
+ * renders fenced code without the fences, so drop the surface backticks.
+ * In v4 the typography plugin is customized through plain CSS overrides
+ * rather than the old `theme.typography` JS extension point.
+ */
+.prose code::before,
+.prose code::after {
+  content: none;
+}
 
 @layer components {
   .markdown-body pre {
