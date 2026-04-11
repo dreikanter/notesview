@@ -118,6 +118,24 @@ func TestViewHandlerToggleClosed(t *testing.T) {
 	}
 }
 
+// TestViewHandlerLiveReloadPreservesIndex guards against the SSE
+// live-reload fetch collapsing the index panel. The note card carries
+// hx-get pointing at its own URL; if that URL omits the index query,
+// every file save would re-render the page with the panel closed.
+func TestViewHandlerLiveReloadPreservesIndex(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/view/README.md?index=dir", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `hx-get="/view/README.md?index=dir"`) {
+		t.Errorf("expected hx-get to preserve ?index=dir for live reload, got: %s", body)
+	}
+}
+
 func TestViewHandler404(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()

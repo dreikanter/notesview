@@ -143,7 +143,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		Frontmatter:  fm,
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
-		ViewHref:     "/view/" + reqPath,
+		ViewHref:     "/view/" + reqPath + lf.IndexQuery,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
