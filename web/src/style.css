@@ -228,10 +228,12 @@
            rounded-full align-middle font-sans;
   }
 
-  /* Fenced code block wrapper (content tokens styled by highlight.js theme) */
+  /* Fenced code block wrapper (content tokens styled by highlight.js theme).
+     text-gray-900 overrides Tailwind Typography's .prose :where(pre) color,
+     which is designed for dark backgrounds and renders invisible on bg-gray-50. */
   .markdown-body pre {
     @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
-           mb-4 text-[85%] leading-snug;
+           mb-4 text-[85%] leading-snug text-gray-900;
   }
 
   .markdown-body code {
