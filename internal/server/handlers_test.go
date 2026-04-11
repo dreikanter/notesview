@@ -150,6 +150,31 @@ func TestEditHandlerNoEditor(t *testing.T) {
 	}
 }
 
+// TestEditHandlerWhitespaceEditor guards against a nil-slice panic when
+// the editor env var is non-empty but contains only whitespace: the
+// `s.editor == ""` guard passes, strings.Fields returns an empty slice,
+// and a naive fields[0] indexing crashes the handler. The handler must
+// treat whitespace-only config as "not configured" and return 400.
+func TestEditHandlerWhitespaceEditor(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Hi"), 0o644); err != nil {
+		t.Fatalf("write note: %v", err)
+	}
+	srv, err := NewServer(dir, "   \t  ")
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("POST", "/api/edit/note.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestEditHandlerBadPath(t *testing.T) {
 	dir := t.TempDir()
 	srv, err := NewServer(dir, "true")

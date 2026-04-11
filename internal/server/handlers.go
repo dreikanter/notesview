@@ -204,8 +204,15 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	// Parse the editor env var the way shells treat $EDITOR: the first
 	// token is the binary, the rest are leading arguments (e.g.
 	// `code --wait`, `subl -w`, `nvim -R`). Without this split, exec
-	// looks for a literal binary named `"code --wait"` and 500s.
+	// looks for a literal binary named `"code --wait"` and 500s. A
+	// whitespace-only value slips past the `== ""` guard above but
+	// yields zero fields, so recheck after Fields to avoid indexing a
+	// nil slice and panicking the handler.
 	fields := strings.Fields(s.editor)
+	if len(fields) == 0 {
+		http.Error(w, "no editor configured (set NOTESVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
+		return
+	}
 	editorBin, editorArgs := fields[0], fields[1:]
 	args := append(append([]string{}, editorArgs...), absPath)
 
