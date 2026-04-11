@@ -12,11 +12,19 @@ import (
 func setupTestIndex(t *testing.T) *index.Index {
 	t.Helper()
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755)
-	os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), []byte("# Todo"), 0o644)
-	os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), []byte("# Todo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	idx := index.New(dir)
-	idx.Build()
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
 	return idx
 }
 

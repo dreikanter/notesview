@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -44,7 +45,9 @@ func (h *SSEHub) Start() error {
 func (h *SSEHub) Stop() {
 	close(h.done)
 	if h.watcher != nil {
-		h.watcher.Close()
+		if err := h.watcher.Close(); err != nil {
+			log.Printf("notesview: sse: watcher close: %v", err)
+		}
 	}
 }
 
@@ -100,7 +103,9 @@ func (h *SSEHub) addClient(c *sseClient) {
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
 	if absPath, err := SafePath(h.root, c.watchPath); err == nil {
-		h.watcher.Add(absPath)
+		if err := h.watcher.Add(absPath); err != nil {
+			log.Printf("notesview: sse: watch %q: %v", absPath, err)
+		}
 	}
 }
 
@@ -134,7 +139,9 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	s.sseHub.addClient(client)
 	defer s.sseHub.removeClient(client)
 
-	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", mustJSON(map[string]string{"type": "connected"}))
+	if _, err := fmt.Fprintf(w, "event: connected\ndata: %s\n\n", mustJSON(map[string]string{"type": "connected"})); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	ctx := r.Context()
@@ -143,10 +150,12 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case path := <-client.events:
-			fmt.Fprintf(w, "event: change\ndata: %s\n\n", mustJSON(map[string]string{
+			if _, err := fmt.Fprintf(w, "event: change\ndata: %s\n\n", mustJSON(map[string]string{
 				"type": "change",
 				"path": path,
-			}))
+			})); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}

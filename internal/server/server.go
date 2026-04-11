@@ -22,7 +22,9 @@ type Server struct {
 
 func NewServer(root, editor string) (*Server, error) {
 	idx := index.New(root)
-	idx.Build()
+	if err := idx.Build(); err != nil {
+		return nil, fmt.Errorf("build index: %w", err)
+	}
 	tpls, err := loadTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("load templates: %w", err)

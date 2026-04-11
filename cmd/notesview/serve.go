@@ -118,5 +118,7 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "notesview: failed to open browser: %v\n", err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -136,7 +137,11 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return entries[i].Name < entries[j].Name
 	})
 
-	go s.index.Build()
+	go func() {
+		if err := s.index.Build(); err != nil {
+			log.Printf("notesview: index rebuild: %v", err)
+		}
+	}()
 
 	browse := BrowseData{
 		layoutFields: layoutFields{
@@ -179,7 +184,9 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.Printf("notesview: raw write %q: %v", reqPath, err)
+	}
 }
 
 // terminalEditors are editors that need an interactive terminal to run.
@@ -207,7 +214,9 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		log.Printf("notesview: edit response encode: %v", err)
+	}
 }
 
 // openEditor launches the editor for the given file. GUI editors are spawned

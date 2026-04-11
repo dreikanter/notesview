@@ -13,10 +13,14 @@ import (
 func TestSSEConnection(t *testing.T) {
 	dir := t.TempDir()
 	testFile := filepath.Join(dir, "test.md")
-	os.WriteFile(testFile, []byte("# Test"), 0o644)
+	if err := os.WriteFile(testFile, []byte("# Test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	hub := NewSSEHub(dir)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
 	defer hub.Stop()
 
 	srv := &Server{root: dir, sseHub: hub}
@@ -35,7 +39,9 @@ func TestSSEConnection(t *testing.T) {
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	os.WriteFile(testFile, []byte("# Updated"), 0o644)
+	if err := os.WriteFile(testFile, []byte("# Updated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	<-done
 	body := w.Body.String()
@@ -47,7 +53,9 @@ func TestSSEConnection(t *testing.T) {
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
 	hub := NewSSEHub(dir)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
 	defer hub.Stop()
 
 	hub.mu.RLock()

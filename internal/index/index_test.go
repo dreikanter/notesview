@@ -9,12 +9,18 @@ import (
 func setupTestDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
-	os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), []byte("# Todo"), 0o644)
-	os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644)
-	os.WriteFile(filepath.Join(dir, "2026", "01", "20260102_8814_report.md"), []byte("# Report"), 0o644)
-	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Readme"), 0o644)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755))
+	must(os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755))
+	must(os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), []byte("# Todo"), 0o644))
+	must(os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644))
+	must(os.WriteFile(filepath.Join(dir, "2026", "01", "20260102_8814_report.md"), []byte("# Report"), 0o644))
+	must(os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Readme"), 0o644))
 	return dir
 }
 
