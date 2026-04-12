@@ -1,6 +1,6 @@
 # Sidebar Tree Navigation
 
-Replace the sidebar's hidden Files/Tags mode toggle with an always-visible tree structure where FILES and TAGS are permanent root nodes.
+Replace the sidebar's hidden Files/Tags mode toggle with a GitHub-repo-browser-style tree where FILES and TAGS are permanent root nodes, and the main panel serves as both directory listing and note viewer.
 
 ## Problem
 
@@ -11,167 +11,155 @@ The current sidebar uses two small icon-only buttons to switch between Files and
 
 ## Design
 
-### Structure
+### Navigation Model (GitHub-style)
 
-The sidebar renders a single tree with two fixed root nodes:
+The sidebar is a persistent navigation tree. The main panel displays either a **directory/tag listing** or a **note**, depending on what's selected. This mirrors GitHub's repository browser: the sidebar tree stays visible and highlights the current selection, while the main area shows content.
 
-```
-▾ FILES
-  notes/
-  journal/
-  ideas.md
-▸ TAGS
-```
+### Sidebar Structure
 
-- **FILES** and **TAGS** are always visible as labeled root-level headings.
-- Each root is collapsible via its disclosure triangle (`▾`/`▸`).
-- Children appear indented beneath their root.
-- Only one path is expanded at a time within each root (single-drill-down, not multi-expand).
-
-### Drill-down Behavior
-
-Clicking a directory drills into it, replacing the root file listing with that directory's contents:
+Two fixed root nodes, always visible:
 
 ```
 ▾ FILES
   ▾ notes/
-    2024-03-01.md
+    2024-03-01.md       ← highlighted (currently open)
     2024-03-02.md
-▸ TAGS
-```
-
-Only one level is visible at a time -- sibling directories are not shown while drilled in.
-
-Clicking the expanded `notes/` (or its `▾`) collapses back to the root directory listing.
-
-Same for tags. Clicking a tag replaces the tag list with that tag's notes:
-
-```
-▾ FILES
-  notes/
   journal/
   ideas.md
 ▾ TAGS
-  ▾ golang
-    go-channels.md
-    error-handling.md
+  golang
+  architecture
+  til
 ```
 
-Clicking the expanded tag name collapses back to the tag list.
+- **FILES** and **TAGS** are labeled section headings that act as collapse toggles.
+- Both can be open simultaneously.
+- Directories and tags behave identically: clicking expands them in the sidebar and shows their content listing in the main panel.
+- Only one directory can be expanded at a time within FILES (single-drill-down). Same for tags within TAGS.
+- Notes are listed under their expanded parent directory or tag.
 
-### Collapse/Expand
+### Interaction Flow
 
-- Clicking a root heading (`FILES` / `TAGS`) toggles that entire section open/closed.
-- Both sections can be open simultaneously, or one can be collapsed.
-- Collapse state is persisted in localStorage.
+**Clicking a directory in the sidebar:**
+1. Expands the directory in the sidebar (shows its children -- subdirs and notes).
+2. Shows a listing of that directory's contents in the main panel.
+3. Highlights the directory as selected in the sidebar.
+
+**Clicking a tag in the sidebar:**
+1. Expands the tag in the sidebar (shows its notes).
+2. Shows a listing of that tag's notes in the main panel.
+3. Highlights the tag as selected in the sidebar.
+
+**Clicking a note (from sidebar OR from main panel listing):**
+1. Opens the note in the main panel.
+2. Highlights the note in the sidebar.
+3. The note's parent directory (or tag) stays expanded so the note is visible among siblings.
+
+**Clicking a note from the main panel listing** behaves identically to clicking it in the sidebar.
+
+### Main Panel: Dual Purpose
+
+The main panel (`#note-pane`) displays one of two things:
+
+1. **Directory/tag listing** -- a list of linked entries (files and subdirectories), visually identical to how they appear in the sidebar. Same icons, same text styling, same hover states. It should be visually clear that both lists perform the same function.
+
+2. **Note view** -- the rendered markdown note (same as today).
+
+### Selected State
+
+The currently-selected item in the sidebar gets a persistent highlight (distinct from hover). This applies to:
+- A directory, when its listing is shown in the main panel.
+- A tag, when its listing is shown in the main panel.
+- A note, when it's open in the main panel.
+
+Only one item is selected at a time.
+
+### Collapse/Expand Behavior
+
+- Clicking a root heading (FILES/TAGS) collapses/expands that entire section.
+- Clicking an expanded directory/tag name collapses it (hides children, returns to parent listing in main panel).
+- Drilling into a subdirectory from the main panel listing expands that subdirectory in the sidebar and shows its contents in both places.
 
 ### State Persistence (localStorage)
 
-Replace the current keys:
-
-| Current key | New key | Values |
+| Key | Values | Default |
 |---|---|---|
-| `notesview.sidebarMode` | removed | -- |
-| `notesview.sidebarDir` | `notesview.filesDir` | Current expanded directory path (empty = root) |
-| `notesview.sidebarTag` | `notesview.tagsTag` | Current expanded tag (empty = tag list) |
-| -- | `notesview.filesOpen` | `"0"` or `"1"` (default `"1"`) |
-| -- | `notesview.tagsOpen` | `"0"` or `"1"` (default `"1"`) |
+| `notesview.filesOpen` | `"0"` / `"1"` | `"1"` |
+| `notesview.tagsOpen` | `"0"` / `"1"` | `"1"` |
+| `notesview.filesDir` | Expanded directory path (empty = root level) | `""` |
+| `notesview.tagsTag` | Expanded tag name (empty = tag list level) | `""` |
+| `notesview.selected` | Path of selected item (dir path, tag name, or note path) | `""` |
+
+Remove the current `notesview.sidebarMode`, `notesview.sidebarDir`, `notesview.sidebarTag` keys.
 
 ### Visual Treatment
 
-- Root headings: uppercase, small, semibold, gray-500 text with disclosure triangle. Styled as section headers, not clickable links.
-- Children: indented under their root, same item styling as today (icon + name, hover highlight, click sound).
-- A thin separator line between the FILES and TAGS sections.
-- The current breadcrumb bar (`<header class="bg-gray-50 ...">`) is removed entirely.
+- **Section headings** (FILES, TAGS): uppercase, small, semibold, gray text with disclosure triangle. Not links.
+- **Entries** (dirs, tags, notes): same styling in sidebar and main panel -- icon + name, same font size, same hover highlight, same click sound.
+- **Selected state**: distinct background color (e.g. `bg-blue-50 border-blue-200`) that differs from hover (`hover:bg-blue-100`).
+- **Indentation**: children are indented one level under their expanded parent.
+- **Separator**: thin line between FILES and TAGS sections.
+- The current breadcrumb bar is removed entirely.
 
-### Removed
+## Removed
 
 - The icon-only segmented toggle buttons.
-- The `breadcrumbs.html` template (breadcrumb navigation is no longer needed).
-- The `BreadcrumbsData` struct and associated builder functions (`buildDirBreadcrumbs`, `buildTagsListBreadcrumbs`, `buildTagBreadcrumbs`).
+- The `breadcrumbs.html` template.
+- The `BreadcrumbsData` struct and breadcrumb builder functions.
+- The concept of sidebar "modes" -- the sidebar always shows the full tree.
 
 ## Backend Changes
 
-### New Endpoint Structure
+### New Endpoint: Directory/Tag Listing for Main Panel
 
-The sidebar is now always rendered as a composite of two sections. Two approaches:
+Add a new response shape for directory and tag content rendered into the main panel. The existing `/dir/{path}`, `/tags`, `/tags/{tag}` endpoints are reused but need to support two targets:
 
-**Option chosen: Two independent HTMX partials.** Each section fetches its own content independently. The sidebar HTML contains two `<section>` containers, each with its own HTMX target. Clicking a directory fetches into the FILES section; clicking a tag fetches into the TAGS section.
+- **`HX-Target: sidebar`** -- returns the sidebar section content (entry list for the tree).
+- **`HX-Target: note-pane`** -- returns the same entries rendered as a main-panel listing page (same visual style, wrapped in the main panel container).
 
-Endpoints stay the same:
-- `GET /dir/{path}` -- returns FILES section content (list of entries)
-- `GET /tags` -- returns TAGS section content (list of tags)
-- `GET /tags/{tag}` -- returns TAGS section content (notes for one tag)
-
-What changes is the **response shape**: each endpoint returns just the entry list (`<ul>...</ul>` or empty state), not the full sidebar body with header. The section headings and collapse controls live in the outer sidebar template, not in the partial responses.
+Alternatively, the main panel listing can reuse the same entry list partial, wrapped differently. The key requirement: **the entry markup is identical** between sidebar and main panel so they look and behave the same.
 
 ### Template Changes
 
-- **Remove**: `breadcrumbs.html` template.
-- **Replace**: `sidebar_body.html` with a new template containing two `<section>` elements, each with a heading toggle and an HTMX target div for its content.
-- **Simplify**: `index_card.html` to render only the entry list (no header/breadcrumbs wrapper).
-- **Update**: `parsePartial` to include the new sidebar template files.
+- **Remove**: `breadcrumbs.html`.
+- **New**: `sidebar_tree.html` -- the two-section sidebar with FILES/TAGS roots, collapse toggles, and HTMX targets for each section's content.
+- **New**: `dir_listing.html` -- main panel template for directory/tag listings. Renders the same entry items as the sidebar but in the main content area.
+- **Refactor**: `index_card.html` -- extract the entry list (`<ul>` of entries) into a shared partial used by both sidebar sections and the main panel listing. Remove the header/breadcrumbs wrapper.
+- **Update**: `sidebar_body.html` -- render the new two-section tree instead of the single IndexCard.
+- **Update**: `parsePartial` -- include new template files.
 
 ### Data Model Changes
 
-- Remove `BreadcrumbsData` and `Crumb` from `templates.go`.
+- Remove `BreadcrumbsData`, `Crumb` from `templates.go`.
 - Remove `Breadcrumbs` field from `IndexCard`.
-- Remove `buildDirBreadcrumbs`, `buildTagsListBreadcrumbs`, `buildTagBreadcrumbs` from `chrome.go`.
-- Handlers return entry-list-only partials instead of full sidebar partials.
+- Remove breadcrumb builder functions from `chrome.go`.
+- Add a `DirListingData` (or similar) for main-panel directory/tag listings.
 
 ## Frontend Changes
 
 ### JavaScript (`app.js`)
 
-- Remove `switchToFiles()`, `switchToTags()`, `setSidebarTag()`, `setSidebarDir()`.
-- Add `toggleSection(name)` -- toggles `notesview.{name}Open` in localStorage, shows/hides the section content.
-- Add `drillDir(href)` -- stores expanded dir in `notesview.filesDir`, fetches content via HTMX into the FILES section target.
-- Add `collapseDir()` -- clears `notesview.filesDir`, fetches root dir listing.
-- Add `drillTag(tag)` -- stores expanded tag in `notesview.tagsTag`, fetches content via HTMX into the TAGS section target.
-- Add `collapseTag()` -- clears `notesview.tagsTag`, fetches tag list.
-- Update `restoreSidebarState()` to restore both sections' open/collapsed state and drill-down positions independently.
+Remove:
+- `switchToFiles()`, `switchToTags()`, `setSidebarTag()`, `setSidebarDir()`
+- `getSidebarMode()`, `getSidebarTag()`, `getSidebarDir()`
+- `refreshSidebar()` (current implementation)
 
-### Sidebar HTML Structure
+Add:
+- `toggleSection(name)` -- collapse/expand a root section, persist to localStorage.
+- `selectDir(href)` -- expand directory in sidebar, load listing in main panel, update selected state.
+- `selectTag(tag)` -- expand tag in sidebar, load listing in main panel, update selected state.
+- `selectNote(href)` -- load note in main panel, highlight in sidebar, keep parent expanded.
+- `collapseDir()` / `collapseTag()` -- collapse back, show parent listing.
+- `restoreSidebarState()` -- restore section open/closed, expanded dir/tag, and selected highlight from localStorage.
 
-```html
-<section id="files-section">
-  <button onclick="toggleSection('files')" class="section-heading">
-    <span class="disclosure">▾</span> FILES
-  </button>
-  <div id="files-content">
-    <!-- HTMX target: entry list from /dir/{path} -->
-  </div>
-</section>
+### Tag Clicks in Note Content
 
-<hr class="section-divider" />
+Tags in the note pane (clickable tag pills) call `selectTag(tag)` instead of the current `setSidebarTag()`. This expands the TAGS section if collapsed, drills into that tag, and shows its note listing in the main panel.
 
-<section id="tags-section">
-  <button onclick="toggleSection('tags')" class="section-heading">
-    <span class="disclosure">▾</span> TAGS
-  </button>
-  <div id="tags-content">
-    <!-- HTMX target: entry list from /tags or /tags/{tag} -->
-  </div>
-</section>
-```
+### Initial Page Load
 
-### Drill-Down Indicator
-
-When drilled into a subdirectory or tag, show the expanded item as a clickable "back" row at the top of that section's list:
-
-```html
-<!-- Inside files-content when drilled into notes/ -->
-<div class="drill-back" onclick="collapseDir()">
-  <span class="disclosure">▾</span> notes/
-</div>
-<ul>
-  <li>2024-03-01.md</li>
-  <li>2024-03-02.md</li>
-</ul>
-```
-
-This row uses the same `▾` triangle to indicate it's expanded and clickable to go back. At root level, this row doesn't appear.
-
-## Tag Clicks in Note Content
-
-Tags displayed in the note pane (from the existing clickable-tags feature) should drill the TAGS section to that tag. This replaces the current behavior of switching the sidebar mode to tags. If the TAGS section is collapsed, expand it first.
+On first load (or when navigating to `/`):
+- Both sidebar sections render expanded.
+- If a README.md exists, it opens in the main panel (existing behavior).
+- The sidebar highlights the corresponding note.
+- Restore persisted state from localStorage.
