@@ -15,7 +15,7 @@
         hx-boost="true"
         hx-target="#sidebar"
         hx-swap="innerHTML"
-        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 font-medium no-underline transition-colors duration-100 hover:bg-gray-50">&#128193; {{ .Name }}</a>
+        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 font-medium no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300">&#128193; {{ .Name }}</a>
     </li>
     {{ else }}
     <li class="border-b border-gray-100 last:border-b-0">
@@ -24,7 +24,7 @@
         hx-boost="true"
         hx-target="#note-pane"
         hx-swap="innerHTML"
-        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 hover:bg-gray-50">&#128196; {{ .Name }}</a>
+        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300">&#128196; {{ .Name }}</a>
     </li>
     {{ end }}
     {{ end }}
