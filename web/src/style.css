@@ -52,6 +52,33 @@
  */
 
 /*
+ * Layout: three fixed viewport regions.
+ *
+ * The topbar is fixed across the top (h-12). The sidebar and note-pane
+ * are siblings, both fixed to the viewport and starting below the topbar,
+ * each with its own overflow-y: auto so their scroll positions are
+ * independent. The sidebar is hidden by default (the document root lacks
+ * the .sidebar-open class); when the user toggles the hamburger, the
+ * class is added, the sidebar becomes visible, and the note-pane's left
+ * edge shifts right by the sidebar width.
+ */
+:root {
+  --sidebar-width: 320px;
+}
+
+#sidebar {
+  display: none;
+}
+
+html.sidebar-open #sidebar {
+  display: block;
+}
+
+html.sidebar-open #note-pane {
+  left: var(--sidebar-width);
+}
+
+/*
  * @tailwindcss/typography wraps inline <code> in literal backticks via
  * `code::before`/`code::after` content. Our markdown pipeline already
  * renders fenced code without the fences, so drop the surface backticks.
