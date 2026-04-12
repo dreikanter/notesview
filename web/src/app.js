@@ -1,7 +1,7 @@
 // notesview front-end bootstrap.
 //
 // Loads HTMX + SSE, runs syntax highlighting on every swap, and owns
-// the sidebar toggle and sidebar mode state (files/tags/tag).
+// the sidebar toggle and sidebar tree state.
 
 import htmx from 'htmx.org';
 import 'htmx-ext-sse';
@@ -99,7 +99,9 @@ function markSelected(selector) {
 // --- Directory navigation ---
 
 window.selectDir = function(href) {
-  setLS('filesDir', href);
+  // Store relative dir path (strip /dir/ prefix) for refreshSidebar
+  var dirPath = href.replace(/^\/dir\//, '');
+  setLS('filesDir', decodeURIComponent(dirPath));
   setLS('selected', href);
 
   // Load listing in main panel
