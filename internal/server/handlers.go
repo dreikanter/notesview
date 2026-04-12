@@ -271,3 +271,17 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("write response failed", "path", reqPath, "err", err)
 	}
 }
+
+func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
+	dirPath := r.PathValue("path")
+
+	card, err := s.buildDirIndex(dirPath)
+	if err != nil {
+		s.logger.Warn("sidebar build failed", "dir", dirPath, "err", err)
+		card = &IndexCard{Mode: "dir", Breadcrumbs: buildDirBreadcrumbs(dirPath), Empty: "Failed to read directory."}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}

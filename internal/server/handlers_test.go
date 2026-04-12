@@ -333,3 +333,41 @@ func TestViewStripsRedundantH1(t *testing.T) {
 		t.Errorf("expected duplicate <h1>Todo</h1> to be stripped, got: %s", md)
 	}
 }
+
+func TestDirHandler(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dir/2026/03", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "sidebar")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "20260331_9201_todo.md") {
+		t.Errorf("expected todo file in sidebar, got: %s", body)
+	}
+}
+
+func TestDirHandlerRoot(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dir/", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "sidebar")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "2026") {
+		t.Errorf("expected year dir in root sidebar, got: %s", body)
+	}
+}
