@@ -58,7 +58,6 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /view/{filepath...}", s.handleView)
-	mux.HandleFunc("GET /browse/{dirpath...}", s.handleBrowse)
 	mux.HandleFunc("POST /api/edit/{filepath...}", s.handleEdit)
 	mux.HandleFunc("GET /api/raw/{filepath...}", s.handleRaw)
 	mux.HandleFunc("GET /events", s.handleSSE)

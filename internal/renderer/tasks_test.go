@@ -36,7 +36,7 @@ func TestTaskSyntax(t *testing.T) {
 	r := NewRenderer(nil)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			html, _, err := r.Render([]byte(tt.input), "")
+			html, _, err := r.Render([]byte(tt.input), "", "")
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}

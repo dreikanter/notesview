@@ -1,25 +1,56 @@
 package server
 
 import (
-	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// buildBreadcrumbs constructs the breadcrumbs trail for a given path.
-// Regardless of isFile, intermediate segments link to /browse/ and the
-// final segment is marked Current (no link): when isFile is true the
-// final segment names the current file, when isFile is false it names
-// the current directory.
-func buildBreadcrumbs(path string, isFile bool) []Crumb {
-	path = strings.Trim(path, "/")
+// dirQuery formats the canonical query suffix that carries the sidebar's
+// sticky directory across links. Empty string means "no sticky directory"
+// (the URL has no ?dir= at all). When non-empty the path is always
+// explicit — callers resolve any default (note's parent directory)
+// before constructing the query.
+func dirQuery(path string) string {
 	if path == "" {
-		return nil
+		return ""
 	}
-	segments := strings.Split(path, "/")
-	var crumbs []Crumb
+	return "?dir=" + url.QueryEscape(path)
+}
+
+// dirLinkHref builds an href that repositions the sidebar to a new
+// directory while keeping the current note in view (sticky model).
+// notePath is the note that should stay visible, or "" for the
+// empty-state page where there's no note to keep.
+func dirLinkHref(notePath, newDir string) string {
+	q := dirQuery(newDir)
+	if notePath == "" {
+		return "/" + q
+	}
+	return "/view/" + notePath + q
+}
+
+// fileLinkHref builds an href that changes the note while keeping the
+// sidebar on the same directory. The other half of the sticky model.
+func fileLinkHref(filePath, sidebarDir string) string {
+	return "/view/" + filePath + dirQuery(sidebarDir)
+}
+
+// buildBreadcrumbs constructs the sidebar header trail. Intermediate
+// segments link back up the directory chain via dirLinkHref so a click
+// only repositions the sidebar; the note is untouched. The final
+// segment is marked Current (no link).
+func buildBreadcrumbs(sidebarDir, notePath string) BreadcrumbsData {
+	data := BreadcrumbsData{
+		HomeHref: dirLinkHref(notePath, ""),
+	}
+	sidebarDir = strings.Trim(sidebarDir, "/")
+	if sidebarDir == "" {
+		return data
+	}
+	segments := strings.Split(sidebarDir, "/")
 	accumulated := ""
 	for i, seg := range segments {
 		if accumulated == "" {
@@ -27,42 +58,28 @@ func buildBreadcrumbs(path string, isFile bool) []Crumb {
 		} else {
 			accumulated += "/" + seg
 		}
-		isLast := i == len(segments)-1
-		if isLast && isFile {
-			crumbs = append(crumbs, Crumb{Label: seg, Current: true})
+		if i == len(segments)-1 {
+			data.Crumbs = append(data.Crumbs, Crumb{Label: seg, Current: true})
 			continue
 		}
-		if isLast && !isFile {
-			crumbs = append(crumbs, Crumb{Label: seg, Current: true})
-			continue
-		}
-		crumbs = append(crumbs, Crumb{
+		data.Crumbs = append(data.Crumbs, Crumb{
 			Label: seg,
-			Href:  "/browse/" + accumulated,
+			Href:  dirLinkHref(notePath, accumulated),
 		})
 	}
-	return crumbs
+	return data
 }
 
-// buildSidebarTree walks the notes root and produces the nested tree used
-// by the sidebar template. It includes all markdown files and directories,
-// skipping dotfiles.
-func buildSidebarTree(root string, logger *slog.Logger) []SidebarNode {
-	return readSidebarDir(root, "", logger)
-}
-
-func readSidebarDir(root, rel string, logger *slog.Logger) []SidebarNode {
-	absPath := filepath.Join(root, rel)
+// readDirEntries returns the visible entries of a notes directory as
+// IndexEntry values. Directory entries link through dirLinkHref so the
+// note stays put on click; file entries link through fileLinkHref so
+// the sidebar stays put on click.
+func readDirEntries(absPath, relPath, notePath string) ([]IndexEntry, error) {
 	dirEntries, err := os.ReadDir(absPath)
 	if err != nil {
-		// Log once and degrade gracefully: a read failure in one subtree
-		// (permissions, broken symlink, etc.) shouldn't break the whole
-		// sidebar, but it also shouldn't be completely invisible.
-		logger.Warn("sidebar read failed", "path", absPath, "err", err)
-		return nil
+		return nil, err
 	}
-
-	var nodes []SidebarNode
+	entries := make([]IndexEntry, 0, len(dirEntries))
 	for _, de := range dirEntries {
 		name := de.Name()
 		if strings.HasPrefix(name, ".") {
@@ -72,25 +89,26 @@ func readSidebarDir(root, rel string, logger *slog.Logger) []SidebarNode {
 			continue
 		}
 		entryRel := name
-		if rel != "" {
-			entryRel = rel + "/" + name
+		if relPath != "" {
+			entryRel = filepath.ToSlash(filepath.Join(relPath, name))
 		}
-		node := SidebarNode{
-			Name:  name,
-			Path:  entryRel,
-			IsDir: de.IsDir(),
-		}
+		var href string
 		if de.IsDir() {
-			node.Children = readSidebarDir(root, entryRel, logger)
+			href = dirLinkHref(notePath, entryRel)
+		} else {
+			href = fileLinkHref(entryRel, relPath)
 		}
-		nodes = append(nodes, node)
+		entries = append(entries, IndexEntry{
+			Name:  name,
+			IsDir: de.IsDir(),
+			Href:  href,
+		})
 	}
-
-	sort.Slice(nodes, func(i, j int) bool {
-		if nodes[i].IsDir != nodes[j].IsDir {
-			return nodes[i].IsDir
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDir != entries[j].IsDir {
+			return entries[i].IsDir
 		}
-		return nodes[i].Name < nodes[j].Name
+		return entries[i].Name < entries[j].Name
 	})
-	return nodes
+	return entries, nil
 }
