@@ -1,6 +1,6 @@
 // Package renderer's noteext.go implements NoteLinkExtension: a goldmark
-// extension that rewrites internal link destinations, auto-links bare
-// note UIDs, and emits HTMX attributes on internal <a> tags.
+// extension that rewrites internal link destinations, resolves [[UID]]
+// wiki-links, and emits HTMX attributes on internal <a> tags.
 package renderer
 
 import (
@@ -19,6 +19,82 @@ import (
 
 	"github.com/dreikanter/notesview/internal/index"
 )
+
+// wikiLinkParser is a goldmark InlineParser that recognizes [[UID]]
+// syntax and emits a Link node pointing at the resolved note. The
+// trigger byte is '[', which goldmark dispatches on as punctuation.
+// If the pattern doesn't match or the UID doesn't resolve, the parser
+// returns nil and goldmark's standard link parser handles the '['.
+type wikiLinkParser struct{}
+
+func (p *wikiLinkParser) Trigger() []byte {
+	return []byte{'['}
+}
+
+func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+	line, _ := block.PeekLine()
+	// Must start with [[
+	if len(line) < 2 || line[0] != '[' || line[1] != '[' {
+		return nil
+	}
+
+	// Find closing ]]
+	end := bytes.Index(line[2:], []byte("]]"))
+	if end < 0 {
+		return nil
+	}
+	inner := line[2 : 2+end]
+
+	// Validate UID pattern: 8 digits + '_' + 4+ digits
+	if !isValidUID(inner) {
+		return nil
+	}
+	uid := string(inner)
+
+	stateAny := pc.Get(noteLinkStateKey)
+	if stateAny == nil {
+		return nil
+	}
+	state := stateAny.(*noteLinkState)
+	if state.idx == nil {
+		return nil
+	}
+
+	relPath, ok := state.idx.Lookup(uid)
+	if !ok {
+		return nil
+	}
+
+	// Consume [[ + UID + ]]
+	block.Advance(2 + end + 2)
+	link := ast.NewLink()
+	link.Destination = []byte("/view/" + relPath + state.dirQuery)
+	link.SetAttributeString("class", []byte("uid-link"))
+	link.AppendChild(link, ast.NewString([]byte(uid)))
+	return link
+}
+
+// isValidUID checks if b matches the UID pattern: exactly 8 digits,
+// an underscore, then 4 or more digits.
+func isValidUID(b []byte) bool {
+	if len(b) < 13 { // 8 + 1 + 4 minimum
+		return false
+	}
+	for i := 0; i < 8; i++ {
+		if b[i] < '0' || b[i] > '9' {
+			return false
+		}
+	}
+	if b[8] != '_' {
+		return false
+	}
+	for i := 9; i < len(b); i++ {
+		if b[i] < '0' || b[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // noteLinkStateKey identifies per-request state stored in parser.Context.
 // The state travels from the Renderer.Render call into the AST transformer
@@ -50,6 +126,9 @@ func (e *noteLinkExtension) Extend(m goldmark.Markdown) {
 		parser.WithASTTransformers(
 			util.Prioritized(&noteLinkTransformer{}, 100),
 		),
+		parser.WithInlineParsers(
+			util.Prioritized(&wikiLinkParser{}, 99),
+		),
 	)
 	m.Renderer().AddOptions(
 		renderer.WithNodeRenderers(
@@ -58,11 +137,8 @@ func (e *noteLinkExtension) Extend(m goldmark.Markdown) {
 	)
 }
 
-// noteLinkTransformer walks the AST twice after parsing. The first
-// pass rewrites *ast.Link destinations for note:// and relative .md
-// refs. The second pass collects runs of contiguous Text siblings
-// outside existing links, code spans, and code blocks, scans each run
-// for bare UIDs, and wraps resolved ones in new *ast.Link children.
+// noteLinkTransformer walks the AST after parsing and rewrites
+// *ast.Link destinations for note:// and relative .md refs.
 type noteLinkTransformer struct{}
 
 func (t *noteLinkTransformer) Transform(doc *ast.Document, reader text.Reader, pc parser.Context) {
@@ -75,7 +151,6 @@ func (t *noteLinkTransformer) Transform(doc *ast.Document, reader text.Reader, p
 		return
 	}
 
-	// First pass: rewrite Link destinations.
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -85,61 +160,6 @@ func (t *noteLinkTransformer) Transform(doc *ast.Document, reader text.Reader, p
 		}
 		return ast.WalkContinue, nil
 	})
-
-	// Second pass: auto-link bare UIDs. Goldmark splits Text nodes at
-	// emphasis-candidate bytes like '_', so a UID like "20260331_9201"
-	// may be split across two sibling Text nodes whose segments are
-	// contiguous in the source. We collect runs of contiguous Text
-	// siblings (under auto-linkable parents), scan each run as a
-	// single virtual span, and replace the nodes for each match.
-	//
-	// Collect runs first to avoid mutating during the walk.
-	var runs [][]*ast.Text
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		// Skip into subtrees that should not be auto-linked. Returning
-		// SkipChildren prevents us from descending into Link labels,
-		// code spans, or code blocks.
-		switch n.Kind() {
-		case ast.KindLink, ast.KindAutoLink, ast.KindCodeSpan,
-			ast.KindCodeBlock, ast.KindFencedCodeBlock:
-			return ast.WalkSkipChildren, nil
-		}
-		// Gather contiguous Text children runs for this node.
-		var run []*ast.Text
-		flush := func() {
-			if len(run) > 0 {
-				runs = append(runs, run)
-				run = nil
-			}
-		}
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-			t, ok := c.(*ast.Text)
-			if !ok {
-				flush()
-				continue
-			}
-			if len(run) == 0 {
-				run = append(run, t)
-				continue
-			}
-			prev := run[len(run)-1]
-			if prev.Segment.Stop == t.Segment.Start {
-				run = append(run, t)
-			} else {
-				flush()
-				run = append(run, t)
-			}
-		}
-		flush()
-		return ast.WalkContinue, nil
-	})
-	src := reader.Source()
-	for _, run := range runs {
-		autoLinkUIDsInRun(run, src, state)
-	}
 }
 
 // rewriteLinkDestination mutates a single *ast.Link in place. It handles
@@ -172,131 +192,6 @@ func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 	resolved := path.Clean(path.Join(s.currentDir, dest))
 	resolved = strings.TrimPrefix(resolved, "/")
 	n.Destination = []byte("/view/" + resolved + s.dirQuery)
-}
-
-// autoLinkUIDsInRun scans a run of contiguous Text siblings for bare
-// UIDs (8 digits, underscore, 4+ digits) that resolve in the index and
-// rewrites covered Text nodes into a sequence of Text + Link siblings.
-// The run must be non-empty and consist of Text nodes whose segments
-// are adjacent in the source (prev.Stop == next.Start). The run's
-// nodes must share the same parent.
-func autoLinkUIDsInRun(run []*ast.Text, src []byte, s *noteLinkState) {
-	if len(run) == 0 {
-		return
-	}
-	runStart := run[0].Segment.Start
-	runStop := run[len(run)-1].Segment.Stop
-	content := src[runStart:runStop]
-
-	// Find all non-overlapping UID positions within content using a
-	// manual word-boundary scan. A UID is 8 digits + '_' + 4+ digits,
-	// preceded by start-of-content or a non-word byte, and followed by
-	// end-of-content or a non-word byte.
-	var ranges [][2]int
-	i := 0
-	for i < len(content) {
-		// A candidate UID must start either at position 0, or right
-		// after a non-word byte. Find such a position.
-		if i > 0 && isWordByte(content[i-1]) {
-			// Not at a word boundary; skip ahead.
-			i++
-			continue
-		}
-		// Try to match a UID at position i: 8 digits, '_', 4+ digits,
-		// followed by end-of-content or a non-word byte.
-		if i+13 > len(content) {
-			break
-		}
-		if !allDigits(content[i:i+8]) || content[i+8] != '_' {
-			i++
-			continue
-		}
-		k := i + 9
-		for k < len(content) && content[k] >= '0' && content[k] <= '9' {
-			k++
-		}
-		if k-(i+9) < 4 {
-			i++
-			continue
-		}
-		if k < len(content) && isWordByte(content[k]) {
-			i++
-			continue
-		}
-		ranges = append(ranges, [2]int{i, k})
-		i = k
-	}
-
-	if len(ranges) == 0 {
-		return
-	}
-
-	// Filter to UIDs that resolve in the index.
-	type match struct {
-		start, end int
-		relPath    string
-	}
-	var matches []match
-	for _, r := range ranges {
-		uid := string(content[r[0]:r[1]])
-		if relPath, ok := s.idx.Lookup(uid); ok {
-			matches = append(matches, match{r[0], r[1], relPath})
-		}
-	}
-	if len(matches) == 0 {
-		return
-	}
-
-	parent := run[0].Parent()
-	if parent == nil {
-		return
-	}
-
-	// Build replacement nodes: Text for gaps between matches, Link for
-	// each match. Offsets are relative to content; we add runStart to
-	// convert back to source positions.
-	cursor := 0
-	var newNodes []ast.Node
-	for _, m := range matches {
-		if m.start > cursor {
-			leading := ast.NewTextSegment(text.NewSegment(runStart+cursor, runStart+m.start))
-			newNodes = append(newNodes, leading)
-		}
-		link := ast.NewLink()
-		link.Destination = []byte("/view/" + m.relPath + s.dirQuery)
-		link.SetAttributeString("class", []byte("uid-link"))
-		linkText := ast.NewTextSegment(text.NewSegment(runStart+m.start, runStart+m.end))
-		link.AppendChild(link, linkText)
-		newNodes = append(newNodes, link)
-		cursor = m.end
-	}
-	if cursor < len(content) {
-		trailing := ast.NewTextSegment(text.NewSegment(runStart+cursor, runStart+len(content)))
-		newNodes = append(newNodes, trailing)
-	}
-
-	// Insert replacements before the first run node, then remove all
-	// original run nodes.
-	anchor := run[0]
-	for _, newNode := range newNodes {
-		parent.InsertBefore(parent, anchor, newNode)
-	}
-	for _, original := range run {
-		parent.RemoveChild(parent, original)
-	}
-}
-
-func isWordByte(b byte) bool {
-	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
-}
-
-func allDigits(b []byte) bool {
-	for _, c := range b {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // noteLinkRenderer overrides goldmark's default *ast.Link renderer so
