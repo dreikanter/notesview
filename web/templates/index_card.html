@@ -14,7 +14,7 @@
         hx-target="#sidebar"
         hx-swap="innerHTML"
         onclick="setSidebarTag('{{ .Name }}')"
-        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300">&#127991;&#65039; {{ .Name }}</a>
+        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg> {{ .Name }}</a>
     </li>
     {{ else if .IsDir }}
     <li class="border-b border-gray-100 last:border-b-0">
@@ -24,7 +24,7 @@
         hx-target="#sidebar"
         hx-swap="innerHTML"
         onclick="setSidebarDir('{{ .Href }}')"
-        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 font-medium no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300">&#128193; {{ .Name }}</a>
+        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 font-medium no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg> {{ .Name }}</a>
     </li>
     {{ else }}
     <li class="border-b border-gray-100 last:border-b-0">
@@ -33,7 +33,7 @@
         hx-boost="true"
         hx-target="#note-pane"
         hx-swap="innerHTML"
-        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300">&#128196; {{ .Name }}</a>
+        class="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 13h-2"/><path d="M10 17H8"/><path d="M16 17h-2"/></svg> {{ .Name }}</a>
     </li>
     {{ end }}
     {{ end }}
