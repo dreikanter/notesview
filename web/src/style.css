@@ -17,7 +17,7 @@
  * They don't appear in scanned source files, so tell Tailwind to generate
  * them unconditionally — v4's replacement for the old `safelist` config.
  */
-@source inline('broken-link uid-link task-checked task-unchecked task-tag selected bg-blue-50 border-blue-200');
+@source inline('broken-link uid-link task-checked task-unchecked task-tag selected bg-blue-100 border-blue-300 text-blue-700');
 
 /*
  * Why this file exists (and why it still uses @apply in places).

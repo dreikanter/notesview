@@ -92,14 +92,14 @@ function restoreSectionState(name) {
 
 function clearSelected() {
   document.querySelectorAll('.entry-link.selected').forEach(function(el) {
-    el.classList.remove('selected', 'bg-blue-50', 'border-blue-200');
+    el.classList.remove('selected', 'bg-blue-100', 'border-blue-300', 'text-blue-700');
   });
 }
 
 function markSelected(selector) {
   clearSelected();
   var el = document.querySelector(selector);
-  if (el) el.classList.add('selected', 'bg-blue-50', 'border-blue-200');
+  if (el) el.classList.add('selected', 'bg-blue-100', 'border-blue-300', 'text-blue-700');
 }
 
 // --- Directory navigation ---
@@ -172,6 +172,28 @@ window.selectNote = function(href, skipPush) {
     swap: 'innerHTML',
     headers: { 'HX-Target': 'note-pane' },
   });
+
+  // Expand the note's parent directory in the sidebar so the note
+  // appears highlighted among its siblings.
+  var notePath = href.replace(/^\/view\//, '');
+  var parts = decodeURIComponent(notePath).split('/');
+  if (parts.length > 1) {
+    // Has a parent directory — expand it
+    var parentDir = parts.slice(0, -1).join('/');
+    setLS('filesDir', parentDir);
+    var dirHref = '/dir/' + encodePath(parentDir);
+    htmx.ajax('GET', dirHref, {
+      target: '#files-content',
+      swap: 'innerHTML',
+    });
+  }
+
+  // Ensure files section is visible
+  var content = document.getElementById('files-content');
+  var disclosure = document.getElementById('files-disclosure');
+  if (content) content.style.display = '';
+  if (disclosure) disclosure.textContent = '\u25BE';
+  setLS('filesOpen', '1');
 };
 
 // --- Browser back/forward ---
