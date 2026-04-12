@@ -51,6 +51,7 @@ type layoutFields struct {
 type ViewData struct {
 	layoutFields
 	NotePath    string
+	NoteTitle   string
 	Frontmatter *renderer.Frontmatter
 	HTML        template.HTML
 	SSEWatch    string
@@ -63,11 +64,14 @@ type ViewData struct {
 // no sidebar, no topbar.
 type NotePartialData struct {
 	NotePath    string
+	NoteTitle   string
 	Frontmatter *renderer.Frontmatter
 	HTML        template.HTML
 	SSEWatch    string
 	ViewHref    string
 	DirQuery    string
+	EditPath    string
+	EditHref    string
 }
 
 // SidebarPartialData is the render context for an HX-Target: sidebar

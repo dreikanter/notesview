@@ -157,16 +157,27 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	if fm != nil && fm.Title != "" {
 		title = fm.Title
 	}
+	noteTitle := title
+
+	editPath := ""
+	editHref := ""
+	if s.editor != "" {
+		editPath = reqPath
+		editHref = "/api/edit/" + reqPath
+	}
 
 	// Note-pane partial response: return only the note body, no chrome.
 	if hxTargetedAt(r, "note-pane") {
 		partial := NotePartialData{
 			NotePath:    reqPath,
+			NoteTitle:   noteTitle,
 			Frontmatter: fm,
 			HTML:        template.HTML(html),
 			SSEWatch:    viewSSEWatch(reqPath),
 			ViewHref:    "/view/" + reqPath + dq,
 			DirQuery:    dq,
+			EditPath:    editPath,
+			EditHref:    editHref,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := s.templates.renderNotePartial(w, partial); err != nil {
@@ -176,7 +187,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Full page: build the sidebar too.
-	lf := s.buildLayoutFields(title, reqPath, sidebarDir)
+	lf := s.buildLayoutFields(title, editPath, sidebarDir)
 	card, err := s.buildDirIndex(sidebarDir, reqPath)
 	if err != nil {
 		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
@@ -185,6 +196,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	view := ViewData{
 		layoutFields: lf,
 		NotePath:     reqPath,
+		NoteTitle:    noteTitle,
 		Frontmatter:  fm,
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
@@ -219,8 +231,9 @@ func (s *Server) writeSidebarPartial(w http.ResponseWriter, sidebarDir, notePath
 // rather than skipping the swap on a 4xx status.
 func (s *Server) writeNoteNotFoundPartial(w http.ResponseWriter, reqPath string) {
 	partial := NotePartialData{
-		NotePath: reqPath,
-		HTML:     template.HTML(`<p class="text-gray-500 text-center py-8">Note not found.</p>`),
+		NotePath:  reqPath,
+		NoteTitle: filepath.Base(reqPath),
+		HTML:      template.HTML(`<p class="text-gray-500 text-center py-8">Note not found.</p>`),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.renderNotePartial(w, partial); err != nil {

@@ -25,14 +25,6 @@
       aria-expanded="false"
       class="bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg text-gray-500 rounded-md leading-none flex-shrink-0 hover:bg-gray-50 hover:text-gray-900">&#9776;</button>
     <div class="flex-1 flex items-center justify-end gap-2 overflow-hidden">
-      {{ if .EditPath }}
-      <button
-        id="edit-btn"
-        type="button"
-        hx-post="{{ .EditHref }}"
-        hx-swap="none"
-        class="bg-transparent border border-gray-300 rounded-md cursor-pointer px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0 hover:bg-gray-50 hover:border-gray-200">Edit</button>
-      {{ end }}
     </div>
   </header>
 
