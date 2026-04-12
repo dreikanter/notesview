@@ -33,7 +33,7 @@
     {{ template "sidebar_body" .Sidebar }}
   </aside>
 
-  <main id="note-pane" class="fixed top-12 left-0 right-0 bottom-0 overflow-y-auto px-4 py-4">
+  <main id="note-pane" class="fixed top-12 left-0 right-0 bottom-0 overflow-y-auto px-4 py-4 max-[480px]:px-2 max-[480px]:py-2">
     {{ if .DirListing }}{{ template "dir_listing" .DirListing }}{{ else }}{{ template "note_pane_body" . }}{{ end }}
   </main>
 
