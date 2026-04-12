@@ -60,7 +60,7 @@ function refreshSidebar() {
     url = tag ? `/tags/${encodeURIComponent(tag)}` : '/tags';
   } else {
     const dir = getSidebarDir();
-    url = `/dir/${dir}`;
+    url = `/dir/${encodePath(dir)}`;
   }
   window.htmx && window.htmx.ajax('GET', url, {
     target: '#sidebar',
@@ -86,6 +86,13 @@ function getSidebarDir() {
   try { return localStorage.getItem('notesview.sidebarDir') || ''; } catch (e) { return ''; }
 }
 
+// Encode a directory path for use in URLs, encoding each segment
+// individually while preserving literal / separators.
+function encodePath(p) {
+  if (!p) return '';
+  return p.split('/').map(encodeURIComponent).join('/');
+}
+
 // Global functions called from template onclick handlers.
 // These update localStorage before HTMX fires the request.
 
@@ -100,7 +107,7 @@ window.switchToFiles = function() {
     localStorage.setItem('notesview.sidebarMode', 'files');
     localStorage.setItem('notesview.sidebarDir', parent);
   } catch (e) {}
-  window.htmx && window.htmx.ajax('GET', `/dir/${encodeURIComponent(parent)}`, {
+  window.htmx && window.htmx.ajax('GET', `/dir/${encodePath(parent)}`, {
     target: '#sidebar',
     swap: 'innerHTML',
   });

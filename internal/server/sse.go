@@ -80,9 +80,11 @@ func (h *SSEHub) eventLoop() {
 			}
 			if event.Op&fsnotify.Create != 0 && h.index != nil {
 				h.index.Rebuild()
-				if h.tagIndex != nil {
-					h.tagIndex.Rebuild()
-				}
+			}
+			// Tags live inside file content, so rebuild the tag index
+			// on both Create and Write events.
+			if h.tagIndex != nil {
+				h.tagIndex.Rebuild()
 			}
 			p := event.Name
 			if t, ok := timers[p]; ok {
