@@ -2,6 +2,7 @@ package index
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -29,7 +30,7 @@ type Index struct {
 
 func New(root string, logger *slog.Logger) *Index {
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Index{
 		root:   root,
