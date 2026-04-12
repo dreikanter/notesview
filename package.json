@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^25.6.0",
     "highlight.js": "^11.11.1",
     "htmx-ext-sse": "^2.2.4",
     "htmx.org": "^2.0.8",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.8"
-  }
+  },
+  "scripts": {}
 }

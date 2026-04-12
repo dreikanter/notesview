@@ -34,7 +34,7 @@
   </aside>
 
   <main id="note-pane" class="fixed top-12 left-0 right-0 bottom-0 overflow-y-auto px-6 py-8 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
-    {{ template "note_pane_body" . }}
+    {{ if .DirListing }}{{ template "dir_listing" .DirListing }}{{ else }}{{ template "note_pane_body" . }}{{ end }}
   </main>
 
   <script type="module" src="/static/app.js"></script>

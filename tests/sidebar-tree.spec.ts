@@ -185,4 +185,90 @@ test.describe('Sidebar Tree Navigation', () => {
     await expect(listing).toContainText('README.md');
     await expect(listing).toContainText('alpha.md');
   });
+
+  test('sidebar shows tree hierarchy with ancestor chain', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    // Click journal directory
+    await page.locator('#files-content a', { hasText: 'journal' }).click();
+
+    // Sidebar should show journal expanded with its files indented,
+    // AND root-level siblings still visible
+    const filesContent = page.locator('#files-content');
+    await expect(filesContent.locator('a', { hasText: 'journal' })).toBeVisible();
+    await expect(filesContent.locator('a', { hasText: 'day-one.md' })).toBeVisible();
+    // Root-level siblings should still be visible
+    await expect(filesContent.locator('a', { hasText: 'projects' })).toBeVisible();
+    await expect(filesContent.locator('a', { hasText: 'README.md' })).toBeVisible();
+  });
+
+  test('tag tree shows all tags with selected tag expanded', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    // Click the "daily" tag
+    await page.locator('#tags-content a', { hasText: 'daily' }).click();
+
+    // Sidebar should show "daily" expanded with its notes,
+    // AND other tags still visible
+    const tagsContent = page.locator('#tags-content');
+    await expect(tagsContent.locator('a', { hasText: 'daily' })).toBeVisible();
+    await expect(tagsContent.locator('a', { hasText: 'day-one.md' })).toBeVisible();
+    // Other tags should still be visible
+    await expect(tagsContent.locator('a', { hasText: 'intro' })).toBeVisible();
+  });
+
+  test('URL updates when navigating to a note', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    // Navigate to journal
+    await page.locator('#files-content a', { hasText: 'journal' }).click();
+    await page.locator('#files-content a', { hasText: 'day-one.md' }).waitFor();
+
+    // Click a note
+    await page.locator('#files-content a', { hasText: 'day-one.md' }).click();
+    await page.locator('#note-card').waitFor();
+
+    // URL should have updated
+    await expect(page).toHaveURL(/\/view\/journal\/day-one\.md/);
+  });
+
+  test('URL updates when navigating to a directory', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    await page.locator('#files-content a', { hasText: 'journal' }).click();
+    await page.locator('#dir-listing').waitFor();
+
+    await expect(page).toHaveURL(/\/dir\/journal/);
+  });
+
+  test('URL updates when navigating to a tag', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    await page.locator('#tags-content a', { hasText: 'daily' }).click();
+    await page.locator('#dir-listing').waitFor();
+
+    await expect(page).toHaveURL(/\/tags\/daily/);
+  });
+
+  test('page reload preserves current view', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    // Navigate to journal dir
+    await page.locator('#files-content a', { hasText: 'journal' }).click();
+    await page.locator('#dir-listing').waitFor();
+
+    // Reload the page
+    await page.reload();
+
+    // Should still show the journal directory listing
+    const listing = page.locator('#dir-listing');
+    await expect(listing).toBeVisible();
+    await expect(listing.locator('a', { hasText: 'day-one.md' })).toBeVisible();
+  });
 });

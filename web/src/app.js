@@ -104,11 +104,13 @@ function markSelected(selector) {
 
 // --- Directory navigation ---
 
-window.selectDir = function(href) {
-  // Store relative dir path (strip /dir/ prefix) for refreshSidebar
+window.selectDir = function(href, skipPush) {
   var dirPath = href.replace(/^\/dir\//, '');
   setLS('filesDir', decodeURIComponent(dirPath));
   setLS('selected', href);
+
+  // Push browser URL
+  if (!skipPush) history.pushState({ type: 'dir', href: href }, '', href);
 
   // Load listing in main panel
   htmx.ajax('GET', href, {
@@ -117,7 +119,7 @@ window.selectDir = function(href) {
     headers: { 'HX-Target': 'note-pane' },
   });
 
-  // Load entries in sidebar files section
+  // Load tree in sidebar files section
   htmx.ajax('GET', href, {
     target: '#files-content',
     swap: 'innerHTML',
@@ -133,10 +135,13 @@ window.selectDir = function(href) {
 
 // --- Tag navigation ---
 
-window.selectTag = function(tag) {
+window.selectTag = function(tag, skipPush) {
   var href = '/tags/' + encodeURIComponent(tag);
   setLS('tagsTag', tag);
   setLS('selected', href);
+
+  // Push browser URL
+  if (!skipPush) history.pushState({ type: 'tag', tag: tag, href: href }, '', href);
 
   // Load listing in main panel
   htmx.ajax('GET', href, {
@@ -145,7 +150,7 @@ window.selectTag = function(tag) {
     headers: { 'HX-Target': 'note-pane' },
   });
 
-  // Load entries in sidebar tags section
+  // Load tree in sidebar tags section
   htmx.ajax('GET', href, {
     target: '#tags-content',
     swap: 'innerHTML',
@@ -161,8 +166,11 @@ window.selectTag = function(tag) {
 
 // --- Note navigation ---
 
-window.selectNote = function(href) {
+window.selectNote = function(href, skipPush) {
   setLS('selected', href);
+
+  // Push browser URL
+  if (!skipPush) history.pushState({ type: 'note', href: href }, '', href);
 
   // Load note in main panel
   htmx.ajax('GET', href, {
@@ -171,6 +179,30 @@ window.selectNote = function(href) {
     headers: { 'HX-Target': 'note-pane' },
   });
 };
+
+// --- Browser back/forward ---
+
+window.addEventListener('popstate', function(e) {
+  var state = e.state;
+  if (state && state.type === 'dir') {
+    selectDir(state.href, true);
+  } else if (state && state.type === 'tag') {
+    selectTag(state.tag, true);
+  } else if (state && state.type === 'note') {
+    selectNote(state.href, true);
+  } else {
+    // Fallback: parse the current URL
+    var path = location.pathname;
+    if (path.indexOf('/view/') === 0) {
+      selectNote(path, true);
+    } else if (path.indexOf('/dir/') === 0) {
+      selectDir(path, true);
+    } else if (path.indexOf('/tags/') === 0) {
+      var tag = decodeURIComponent(path.replace(/^\/tags\//, ''));
+      selectTag(tag, true);
+    }
+  }
+});
 
 // --- Restore state ---
 

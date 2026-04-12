@@ -10,10 +10,12 @@ import (
 )
 
 type IndexEntry struct {
-	Name  string
-	IsDir bool
-	IsTag bool
-	Href  string
+	Name     string
+	IsDir    bool
+	IsTag    bool
+	Expanded bool
+	Depth    int
+	Href     string
 }
 
 // IndexCard is the sidebar's data shape.
@@ -39,6 +41,7 @@ type ViewData struct {
 	SSEWatch    string
 	ViewHref    string
 	Sidebar     SidebarPartialData
+	DirListing  *DirListingData // non-nil when main panel shows a directory listing
 }
 
 // NotePartialData is the render context for an HX-Target: note-pane

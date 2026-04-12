@@ -17,17 +17,20 @@ The sidebar is a persistent navigation tree. The main panel displays either a **
 
 ### Sidebar Structure
 
-Two fixed root nodes, always visible:
+Two fixed root nodes, always visible. The sidebar shows a **real tree with visible ancestry** -- when drilled into a nested directory, all ancestor directories remain visible and indented:
 
 ```
 ▾ FILES
-  ▾ notes/
-    2024-03-01.md       ← highlighted (currently open)
-    2024-03-02.md
+  ▾ 2026/
+    ▾ 04/
+      2024-04-01.md     ← highlighted (currently open)
+      2024-04-02.md
   journal/
   ideas.md
 ▾ TAGS
-  golang
+  ▾ golang
+    go-channels.md
+    error-handling.md
   architecture
   til
 ```
@@ -35,8 +38,10 @@ Two fixed root nodes, always visible:
 - **FILES** and **TAGS** are labeled section headings that act as collapse toggles.
 - Both can be open simultaneously.
 - Directories and tags behave identically: clicking expands them in the sidebar and shows their content listing in the main panel.
-- Only one directory can be expanded at a time within FILES (single-drill-down). Same for tags within TAGS.
+- Only one path can be expanded at a time within FILES. Expanding a directory at the same level collapses the previously expanded one. Same for tags within TAGS.
 - Notes are listed under their expanded parent directory or tag.
+- Each nesting level is visually indented (left padding increases with depth).
+- The full ancestor chain from root to the current directory is always visible, providing context for where you are in the hierarchy.
 
 ### Interaction Flow
 
@@ -155,6 +160,33 @@ Add:
 ### Tag Clicks in Note Content
 
 Tags in the note pane (clickable tag pills) call `selectTag(tag)` instead of the current `setSidebarTag()`. This expands the TAGS section if collapsed, drills into that tag, and shows its note listing in the main panel.
+
+### URL Routing
+
+Navigation must update the browser URL so that reload returns to the current view and back/forward buttons work.
+
+- `selectNote(href)` pushes `/view/{path}` to browser history.
+- `selectDir(href)` pushes `/dir/{path}` to browser history.
+- `selectTag(tag)` pushes `/tags/{tag}` to browser history.
+- `popstate` handler parses the URL and calls the appropriate function.
+- The server's `/dir/{path}` and `/tags/{tag}` handlers serve full-page HTML for non-HTMX requests (direct URL visits / reload).
+
+### Sidebar Tree Data Model
+
+The sidebar `/dir/{path}` endpoint returns a **tree with ancestor chain**, not a flat list. For a request to `/dir/2026/04`, the response includes:
+
+```
+depth=0: 2026/ (expanded)
+depth=1:   04/ (expanded)
+depth=2:     file1.md
+depth=2:     file2.md
+depth=0: journal/
+depth=0: README.md
+```
+
+Each entry carries a `Depth` (indentation level) and `Expanded` flag. The template renders indentation based on depth. Expanded entries show a `▾` disclosure triangle; collapsed directories show `▸`.
+
+For tags, when a tag is selected the response includes all tags at depth 0 with the selected tag expanded and its notes at depth 1.
 
 ### Initial Page Load
 
