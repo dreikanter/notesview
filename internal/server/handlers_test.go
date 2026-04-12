@@ -411,13 +411,58 @@ func TestTagNotesHandler(t *testing.T) {
 	}
 }
 
+func TestDirHandler_NotePanePartial(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dir/2026", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "03") {
+		t.Errorf("expected subdirectory '03' in listing, got: %s", body)
+	}
+	if !strings.Contains(body, `id="dir-listing"`) {
+		t.Errorf("expected dir-listing container, got: %s", body)
+	}
+}
+
+func TestTagsHandler_NotePanePartial(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/tags/todo", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "20260331_9201_todo.md") {
+		t.Errorf("expected note in tag listing, got: %s", body)
+	}
+	if !strings.Contains(body, `id="dir-listing"`) {
+		t.Errorf("expected dir-listing container, got: %s", body)
+	}
+}
+
 func TestTagNotesHandlerUnknownTag(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
+	// The note-pane response for an unknown tag shows an empty state.
 	req := httptest.NewRequest("GET", "/tags/nonexistent", nil)
 	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Target", "sidebar")
+	req.Header.Set("HX-Target", "note-pane")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -429,3 +474,4 @@ func TestTagNotesHandlerUnknownTag(t *testing.T) {
 		t.Errorf("expected empty state message, got: %s", body)
 	}
 }
+

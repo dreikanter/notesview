@@ -9,31 +9,19 @@ import (
 	"github.com/dreikanter/notesview/web"
 )
 
-type Crumb struct {
-	Label   string
-	Href    string
-	Current bool
-}
-
-type BreadcrumbsData struct {
-	Mode   string // "dir", "tags", or "tag"
-	Crumbs []Crumb
-}
-
 type IndexEntry struct {
-	Name  string
-	IsDir bool
-	Href  string
+	Name     string
+	IsDir    bool
+	IsTag    bool
+	Expanded bool
+	Depth    int
+	Href     string
 }
 
-// IndexCard is the sidebar's data shape. Mode is kept as an extensibility
-// hook for future non-directory sources (search, tag); today only "dir"
-// is populated.
+// IndexCard is the sidebar's data shape.
 type IndexCard struct {
-	Mode        string
-	Breadcrumbs BreadcrumbsData
-	Entries     []IndexEntry
-	Empty       string
+	Entries []IndexEntry
+	Empty   string
 }
 
 // layoutFields is the common chrome passed to every full-page render.
@@ -52,7 +40,8 @@ type ViewData struct {
 	HTML        template.HTML
 	SSEWatch    string
 	ViewHref    string
-	IndexCard   *IndexCard
+	Sidebar     SidebarPartialData
+	DirListing  *DirListingData // non-nil when main panel shows a directory listing
 }
 
 // NotePartialData is the render context for an HX-Target: note-pane
@@ -69,24 +58,33 @@ type NotePartialData struct {
 	EditHref    string
 }
 
-// SidebarPartialData is the render context for an HX-Target: sidebar
-// partial response. Only the fields the sidebar-body template needs.
+// SidebarPartialData is the render context for the sidebar tree.
 type SidebarPartialData struct {
+	Files *IndexCard // FILES section entries
+	Tags  *IndexCard // TAGS section entries
+}
+
+// DirListingData is the render context for the dir_listing partial,
+// used when a directory or tag listing is shown in the main panel.
+type DirListingData struct {
+	Title     string
 	IndexCard *IndexCard
 }
 
 type templateSet struct {
-	view    *template.Template
-	sidebar *template.Template
-	note    *template.Template
+	view       *template.Template
+	sidebar    *template.Template
+	note       *template.Template
+	dirListing *template.Template
 }
 
 var partials = []string{
 	"templates/layout.html",
-	"templates/breadcrumbs.html",
-	"templates/index_card.html",
+	"templates/entry_list.html",
+	"templates/sidebar_tree.html",
 	"templates/sidebar_body.html",
 	"templates/note_pane_body.html",
+	"templates/dir_listing.html",
 }
 
 func loadTemplates() (*templateSet, error) {
@@ -102,7 +100,11 @@ func loadTemplates() (*templateSet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse note-pane partial: %w", err)
 	}
-	return &templateSet{view: view, sidebar: sidebar, note: note}, nil
+	dirListing, err := parsePartial("dir_listing")
+	if err != nil {
+		return nil, fmt.Errorf("parse dir-listing partial: %w", err)
+	}
+	return &templateSet{view: view, sidebar: sidebar, note: note, dirListing: dirListing}, nil
 }
 
 func parsePage(page string) (*template.Template, error) {
@@ -115,7 +117,7 @@ func parsePage(page string) (*template.Template, error) {
 // template, so a partial response doesn't accidentally include the
 // full layout.
 func parsePartial(name string) (*template.Template, error) {
-	return template.ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/breadcrumbs.html", "templates/index_card.html")
+	return template.ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/entry_list.html", "templates/sidebar_tree.html")
 }
 
 func (t *templateSet) renderView(w io.Writer, data ViewData) error {
@@ -128,4 +130,12 @@ func (t *templateSet) renderNotePartial(w io.Writer, data NotePartialData) error
 
 func (t *templateSet) renderSidebarPartial(w io.Writer, data SidebarPartialData) error {
 	return t.sidebar.ExecuteTemplate(w, "sidebar_body", data)
+}
+
+func (t *templateSet) renderEntryList(w io.Writer, data *IndexCard) error {
+	return t.sidebar.ExecuteTemplate(w, "entry_list", data)
+}
+
+func (t *templateSet) renderDirListing(w io.Writer, data DirListingData) error {
+	return t.dirListing.ExecuteTemplate(w, "dir_listing", data)
 }

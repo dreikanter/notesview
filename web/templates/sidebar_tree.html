@@ -1,0 +1,23 @@
+{{ define "sidebar_tree" }}
+<section id="files-section">
+  <button type="button" onclick="toggleSection('files')" aria-expanded="true" aria-controls="files-content" class="w-full flex items-center gap-1.5 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+    <span id="files-disclosure" class="text-[10px] leading-none">&#9662;</span>
+    FILES
+  </button>
+  <div id="files-content" aria-hidden="false">
+    {{ with .Files }}{{ template "entry_list" . }}{{ end }}
+  </div>
+</section>
+
+<hr class="border-gray-200 m-0" />
+
+<section id="tags-section">
+  <button type="button" onclick="toggleSection('tags')" aria-expanded="true" aria-controls="tags-content" class="w-full flex items-center gap-1.5 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+    <span id="tags-disclosure" class="text-[10px] leading-none">&#9662;</span>
+    TAGS
+  </button>
+  <div id="tags-content" aria-hidden="false">
+    {{ with .Tags }}{{ template "entry_list" . }}{{ end }}
+  </div>
+</section>
+{{ end }}

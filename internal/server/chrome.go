@@ -23,54 +23,74 @@ func tagPath(tag string) string {
 	return url.PathEscape(tag)
 }
 
-// buildDirBreadcrumbs constructs the sidebar header trail for directory
-// mode. Intermediate segments link up the directory chain via /dir/{path}.
-// The final segment is marked Current (no link).
-func buildDirBreadcrumbs(sidebarDir string) BreadcrumbsData {
-	data := BreadcrumbsData{
-		Mode: "dir",
+// buildDirTree builds a tree of directory entries from the root to expandedDir,
+// showing the full ancestor chain with proper depth. At each level, all siblings
+// are visible but only the ancestor on the path to expandedDir is expanded
+// (its children appear indented below it).
+//
+// For expandedDir="2026/04" the output is:
+//
+//	depth=0 2026/    (expanded)
+//	depth=1   04/    (expanded)
+//	depth=2     file.md
+//	depth=0 journal/
+//	depth=0 README.md
+func buildDirTree(root, expandedDir string) ([]IndexEntry, error) {
+	expandedDir = strings.Trim(expandedDir, "/")
+	if expandedDir == "" {
+		return readDirEntriesAtDepth(root, "", 0)
 	}
-	sidebarDir = strings.Trim(sidebarDir, "/")
-	if sidebarDir == "" {
-		return data
+
+	segments := strings.Split(expandedDir, "/")
+	return buildTreeLevel(root, "", segments, 0)
+}
+
+// buildTreeLevel recursively builds one level of the tree. It reads entries
+// at relPath (depth), and for the entry matching segments[0], marks it
+// expanded and recurses into it with segments[1:].
+func buildTreeLevel(root, relPath string, segments []string, depth int) ([]IndexEntry, error) {
+	entries, err := readDirEntriesAtDepth(root, relPath, depth)
+	if err != nil {
+		return nil, err
 	}
-	segments := strings.Split(sidebarDir, "/")
-	accumulated := ""
-	for i, seg := range segments {
-		if accumulated == "" {
-			accumulated = seg
+	if len(segments) == 0 {
+		return entries, nil
+	}
+
+	target := segments[0]
+	var result []IndexEntry
+	for _, e := range entries {
+		if e.IsDir && e.Name == target {
+			e.Expanded = true
+			result = append(result, e)
+			// Recurse into expanded dir
+			childRel := e.Name
+			if relPath != "" {
+				childRel = relPath + "/" + e.Name
+			}
+			children, err := buildTreeLevel(root, childRel, segments[1:], depth+1)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, children...)
 		} else {
-			accumulated += "/" + seg
+			result = append(result, e)
 		}
-		if i == len(segments)-1 {
-			data.Crumbs = append(data.Crumbs, Crumb{Label: seg, Current: true})
-			continue
-		}
-		data.Crumbs = append(data.Crumbs, Crumb{
-			Label: seg,
-			Href:  "/dir/" + viewPath(accumulated),
-		})
 	}
-	return data
+	return result, nil
 }
 
-// buildTagBreadcrumbs constructs the sidebar header trail for a single
-// tag view.
-func buildTagBreadcrumbs(tag string) BreadcrumbsData {
-	return BreadcrumbsData{
-		Mode: "tag",
-		Crumbs: []Crumb{
-			{Label: tag, Current: true},
-		},
+// readDirEntriesAtDepth reads directory entries and sets Depth on each.
+func readDirEntriesAtDepth(root, relPath string, depth int) ([]IndexEntry, error) {
+	absPath := filepath.Join(root, relPath)
+	entries, err := readDirEntries(absPath, relPath)
+	if err != nil {
+		return nil, err
 	}
-}
-
-// buildTagsListBreadcrumbs constructs the sidebar header trail for the
-// tags index view.
-func buildTagsListBreadcrumbs() BreadcrumbsData {
-	return BreadcrumbsData{
-		Mode: "tags",
+	for i := range entries {
+		entries[i].Depth = depth
 	}
+	return entries, nil
 }
 
 // readDirEntries returns the visible entries of a notes directory as
