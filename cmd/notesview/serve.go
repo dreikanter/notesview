@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,7 +28,7 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().IntP("port", "p", 0, "port to listen on (default: auto)")
+	serveCmd.Flags().IntP("port", "p", 0, "port to listen on (default: $NOTESVIEW_PORT, auto)")
 	serveCmd.Flags().BoolP("open", "o", false, "open browser on start")
 	serveCmd.Flags().String("editor", "", "editor command (default: $NOTESVIEW_EDITOR, $VISUAL, $EDITOR)")
 	serveCmd.Flags().String("path", "", "notes root path or file (default: $NOTESVIEW_PATH, $NOTES_PATH, .)")
@@ -39,6 +40,18 @@ func init() {
 
 func runServe(cmd *cobra.Command, args []string) error {
 	port, _ := cmd.Flags().GetInt("port")
+	if port == 0 && !cmd.Flags().Changed("port") {
+		if v := os.Getenv("NOTESVIEW_PORT"); v != "" {
+			p, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("invalid NOTESVIEW_PORT %q: %w", v, err)
+			}
+			if p < 0 || p > 65535 {
+				return fmt.Errorf("NOTESVIEW_PORT %d out of range 0..65535", p)
+			}
+			port = p
+		}
+	}
 	open, _ := cmd.Flags().GetBool("open")
 	editor, _ := cmd.Flags().GetString("editor")
 	path, _ := cmd.Flags().GetString("path")
