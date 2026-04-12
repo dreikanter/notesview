@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notesview/internal/logging"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -30,7 +31,7 @@ type sseClient struct {
 
 func NewSSEHub(root string, logger *slog.Logger, idx *index.Index) *SSEHub {
 	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+		logger = logging.Discard()
 	}
 	return &SSEHub{
 		root:    root,
