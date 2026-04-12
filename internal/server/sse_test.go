@@ -15,7 +15,7 @@ func TestSSEConnection(t *testing.T) {
 	testFile := filepath.Join(dir, "test.md")
 	os.WriteFile(testFile, []byte("# Test"), 0o644)
 
-	hub := NewSSEHub(dir)
+	hub := NewSSEHub(dir, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -46,7 +46,7 @@ func TestSSEConnection(t *testing.T) {
 
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
-	hub := NewSSEHub(dir)
+	hub := NewSSEHub(dir, nil)
 	hub.Start()
 	defer hub.Stop()
 

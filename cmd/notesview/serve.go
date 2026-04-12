@@ -129,7 +129,10 @@ func resolvePath(p string) (root, initialFile string, err error) {
 
 func expandTilde(p string) string {
 	if len(p) > 0 && p[0] == '~' {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return p
+		}
 		return home + p[1:]
 	}
 	return p
@@ -147,5 +150,7 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open browser: %v\n", err)
+	}
 }

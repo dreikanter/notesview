@@ -32,7 +32,9 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 		logger = logging.Discard()
 	}
 	idx := index.New(root)
-	idx.Build()
+	if err := idx.Build(); err != nil {
+		return nil, fmt.Errorf("initial index build: %w", err)
+	}
 	tpls, err := loadTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("load templates: %w", err)
@@ -43,7 +45,7 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 		logger:    logger,
 		renderer:  renderer.NewRenderer(idx),
 		index:     idx,
-		sseHub:    NewSSEHub(root),
+		sseHub:    NewSSEHub(root, logger),
 		templates: tpls,
 	}, nil
 }
@@ -63,8 +65,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /", s.handleRoot)
 
-	staticFS, _ := fs.Sub(web.StaticFS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	staticFS, err := fs.Sub(web.StaticFS, "static")
+	if err != nil {
+		s.logger.Error("failed to open embedded static FS", "err", err)
+	} else {
+		mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	}
 
 	return logRequests(s.logger)(rejectDirtyPaths(mux))
 }

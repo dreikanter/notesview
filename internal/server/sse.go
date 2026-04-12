@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 type SSEHub struct {
 	root    string
+	logger  *slog.Logger
 	mu      sync.RWMutex
 	clients map[*sseClient]struct{}
 	watcher *fsnotify.Watcher
@@ -23,9 +25,13 @@ type sseClient struct {
 	events    chan string
 }
 
-func NewSSEHub(root string) *SSEHub {
+func NewSSEHub(root string, logger *slog.Logger) *SSEHub {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
 	return &SSEHub{
 		root:    root,
+		logger:  logger,
 		clients: make(map[*sseClient]struct{}),
 		done:    make(chan struct{}),
 	}
@@ -49,12 +55,14 @@ func (h *SSEHub) Stop() {
 }
 
 func (h *SSEHub) eventLoop() {
-	var debounce *time.Timer
-	var lastPath string
+	timers := make(map[string]*time.Timer)
 
 	for {
 		select {
 		case <-h.done:
+			for _, t := range timers {
+				t.Stop()
+			}
 			return
 		case event, ok := <-h.watcher.Events:
 			if !ok {
@@ -63,17 +71,18 @@ func (h *SSEHub) eventLoop() {
 			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
 				continue
 			}
-			lastPath = event.Name
-			if debounce != nil {
-				debounce.Stop()
+			p := event.Name
+			if t, ok := timers[p]; ok {
+				t.Stop()
 			}
-			debounce = time.AfterFunc(100*time.Millisecond, func() {
-				h.broadcast(lastPath)
+			timers[p] = time.AfterFunc(100*time.Millisecond, func() {
+				h.broadcast(p)
 			})
-		case _, ok := <-h.watcher.Errors:
+		case err, ok := <-h.watcher.Errors:
 			if !ok {
 				return
 			}
+			h.logger.Warn("file watcher error", "err", err)
 		}
 	}
 }
@@ -107,7 +116,22 @@ func (h *SSEHub) addClient(c *sseClient) {
 func (h *SSEHub) removeClient(c *sseClient) {
 	h.mu.Lock()
 	delete(h.clients, c)
+
+	// Remove the watched path if no remaining client needs it.
+	stillWatched := false
+	for other := range h.clients {
+		if other.watchPath == c.watchPath {
+			stillWatched = true
+			break
+		}
+	}
 	h.mu.Unlock()
+
+	if !stillWatched {
+		if absPath, err := SafePath(h.root, c.watchPath); err == nil {
+			h.watcher.Remove(absPath)
+		}
+	}
 }
 
 func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +158,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	s.sseHub.addClient(client)
 	defer s.sseHub.removeClient(client)
 
-	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", mustJSON(map[string]string{"type": "connected"}))
+	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", toJSON(map[string]string{"type": "connected"}))
 	flusher.Flush()
 
 	ctx := r.Context()
@@ -143,7 +167,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case path := <-client.events:
-			fmt.Fprintf(w, "event: change\ndata: %s\n\n", mustJSON(map[string]string{
+			fmt.Fprintf(w, "event: change\ndata: %s\n\n", toJSON(map[string]string{
 				"type": "change",
 				"path": path,
 			}))
@@ -152,7 +176,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func mustJSON(v interface{}) string {
+func toJSON(v interface{}) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }

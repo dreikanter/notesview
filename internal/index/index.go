@@ -10,14 +10,17 @@ import (
 
 var uidPattern = regexp.MustCompile(`^(\d{8}_\d+)`)
 
+var fullUIDPattern = regexp.MustCompile(`^\d{8}_\d+$`)
+
 func IsUID(s string) bool {
-	return regexp.MustCompile(`^\d{8}_\d+$`).MatchString(s)
+	return fullUIDPattern.MatchString(s)
 }
 
 type Index struct {
-	root string
-	mu   sync.RWMutex
-	uids map[string]string
+	root     string
+	mu       sync.RWMutex
+	uids     map[string]string
+	building sync.Mutex
 }
 
 func New(root string) *Index {
@@ -25,6 +28,18 @@ func New(root string) *Index {
 		root: root,
 		uids: make(map[string]string),
 	}
+}
+
+// Rebuild triggers a background index build, coalescing concurrent calls.
+// If a build is already in progress, the call returns immediately.
+func (idx *Index) Rebuild() {
+	if !idx.building.TryLock() {
+		return
+	}
+	go func() {
+		defer idx.building.Unlock()
+		idx.Build()
+	}()
 }
 
 func (idx *Index) Build() error {
