@@ -14,52 +14,27 @@ import (
 	"syscall"
 )
 
-// indexState parses the panel state from the request's query string.
-// Only the "dir" mode is understood today; unknown values collapse to
-// closed. The returned explicitPath is the raw ?path= value (empty
-// string is valid and means "root"); hasPath distinguishes "no path
-// param" from "path param set to empty" so the caller can pick a
-// sensible default for the former (e.g. the note's parent directory).
-//
-// This function is the seam future index modes extend: adding
-// "search" or "tag" means returning a mode discriminator plus the
-// mode-specific extras the query encodes.
-func indexState(r *http.Request) (open bool, explicitPath string, hasPath bool) {
-	q := r.URL.Query()
-	if q.Get("index") != "dir" {
-		return false, "", false
-	}
-	raw, ok := q["path"]
+// parseDirParam normalizes the ?dir=... query parameter. An empty
+// string means "no sticky directory" (reopen defaults to the note's
+// parent). A slash-trimmed non-empty value is the directory the sidebar
+// should show.
+func parseDirParam(r *http.Request) (dir string, hasDir bool) {
+	raw, ok := r.URL.Query()["dir"]
 	if !ok {
-		return true, "", false
+		return "", false
 	}
-	return true, strings.Trim(raw[0], "/"), true
+	return strings.Trim(raw[0], "/"), true
 }
 
-// toggleHref returns the URL the hamburger should point at. When the
-// panel is open, the link strips the query and leaves just the note
-// path so a click closes the panel. When closed, the link adds the
-// panel with an explicit default path (the note's parent) so a click
-// opens the panel to the right directory.
-func toggleHref(notePath string, open bool, defaultPath string) string {
-	if open {
-		return "/view/" + notePath
-	}
-	return "/view/" + notePath + "?index=dir&path=" + url.QueryEscape(defaultPath)
-}
-
-// buildLayoutFields assembles the common chrome every page needs. The
-// effectivePath is the directory the panel is showing — already
-// resolved from either ?path= or a handler-specific default — so the
-// returned IndexQuery always renders with an explicit path and sticky
-// navigation works regardless of how the panel was opened.
-func (s *Server) buildLayoutFields(title, editPath string, open bool, effectivePath string) layoutFields {
+// buildLayoutFields assembles the common chrome every full-page render
+// needs. effectiveDir is the directory the sidebar is showing — already
+// resolved from either ?dir= or a handler-specific default (the note's
+// parent).
+func (s *Server) buildLayoutFields(title, editPath, effectiveDir string) layoutFields {
 	lf := layoutFields{
-		Title:      title,
-		EditPath:   editPath,
-		IndexOpen:  open,
-		IndexQuery: indexQuery(open, effectivePath),
-		ShowToggle: true,
+		Title:    title,
+		EditPath: editPath,
+		DirQuery: dirQuery(effectiveDir),
 	}
 	if editPath != "" {
 		lf.EditHref = "/api/edit/" + editPath
@@ -67,82 +42,64 @@ func (s *Server) buildLayoutFields(title, editPath string, open bool, effectiveP
 	return lf
 }
 
-// viewSSEWatch is the value for the sse-connect attribute on view.html.
+// viewSSEWatch is the value for the sse-connect attribute on note_pane_body.
 // The SSE URL needs the note path percent-encoded because file names may
 // contain spaces, slashes, question marks, etc.
 func viewSSEWatch(filePath string) string {
 	return "/events?watch=" + url.QueryEscape(filePath)
 }
 
-// handleRoot is the entry point for the standalone index panel and
-// the README shortcut. When the request has no query params it
-// redirects to README if one exists, otherwise renders the panel at
-// the root. When ?index=dir is set, it renders the standalone panel
-// at whatever ?path= points at.
+// hxTargetedAt returns true if this is an HTMX request whose target is
+// the named element id (without the leading "#"). HTMX sends
+// HX-Target as the raw id value.
+func hxTargetedAt(r *http.Request, id string) bool {
+	if r.Header.Get("HX-Request") != "true" {
+		return false
+	}
+	return r.Header.Get("HX-Target") == id
+}
+
+// handleRoot is the entry point for /. It redirects to README.md if
+// one exists at the notes root. Otherwise it renders the two-pane
+// layout with an empty-state placeholder where the note would be.
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	if r.URL.Query().Get("index") == "dir" {
-		s.handleStandaloneIndex(w, r)
+
+	// Sidebar partial response via HX-Target: sidebar on /
+	if hxTargetedAt(r, "sidebar") {
+		sidebarDir, _ := parseDirParam(r)
+		s.writeSidebarPartial(w, sidebarDir, "")
 		return
 	}
+
 	readme := filepath.Join(s.root, "README.md")
 	if _, err := os.Stat(readme); err == nil {
 		http.Redirect(w, r, "/view/README.md", http.StatusFound)
 		return
 	}
-	s.handleStandaloneIndex(w, r)
-}
 
-// handleStandaloneIndex renders the index panel as a page of its own,
-// with no note card. The directory the panel shows comes from ?path=.
-func (s *Server) handleStandaloneIndex(w http.ResponseWriter, r *http.Request) {
-	panelPath := strings.Trim(r.URL.Query().Get("path"), "/")
-	absPath, err := SafePath(s.root, panelPath)
+	// Empty state: render the two-pane layout with no note.
+	sidebarDir, _ := parseDirParam(r)
+	lf := s.buildLayoutFields("", "", sidebarDir)
+	card, err := s.buildDirIndex(sidebarDir, "")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
 	}
-	stat, err := os.Stat(absPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !stat.IsDir() {
-		http.Error(w, "not a directory", http.StatusBadRequest)
-		return
-	}
-
-	lf := s.buildLayoutFields(dirTitle(panelPath), "", true, panelPath)
-	// No note is in context on the standalone page, so the hamburger
-	// has nothing to reveal/hide — hide it rather than render a
-	// link that would take the user to an empty screen.
-	lf.ShowToggle = false
-
-	card, err := s.buildDirIndex(panelPath, "")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	lf.IndexCard = card
-
 	go s.index.Build()
 
-	browse := BrowseData{
+	view := ViewData{
 		layoutFields: lf,
-		DirPath:      panelPath,
+		NotePath:     "",
+		HTML:         template.HTML(`<p class="text-gray-500 text-center py-8">No note selected.</p>`),
+		IndexCard:    card,
+		ViewHref:     "/",
 	}
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.renderBrowse(w, browse); err != nil {
+	if err := s.templates.renderView(w, view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
 }
 
@@ -154,9 +111,24 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sidebar partial: don't read the file at all.
+	if hxTargetedAt(r, "sidebar") {
+		explicitDir, _ := parseDirParam(r)
+		if explicitDir == "" {
+			explicitDir = noteParentDir(reqPath)
+		}
+		s.writeSidebarPartial(w, explicitDir, reqPath)
+		return
+	}
+
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if hxTargetedAt(r, "note-pane") {
+				// Empty-state partial with HTTP 200 so HTMX swaps it in.
+				s.writeNoteNotFoundPartial(w, reqPath)
+				return
+			}
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
@@ -164,25 +136,18 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentDir := filepath.Dir(reqPath)
-	if currentDir == "." {
-		currentDir = ""
-	}
+	currentDir := noteParentDir(reqPath)
 
-	// Resolve the panel's effective directory. When the panel is open
-	// and ?path= is absent we default to the note's own parent — this
-	// is the only case where the default matters because every link
-	// the server itself renders emits ?path= explicitly. The resolved
-	// query is also threaded into the renderer so note-content links
-	// preserve the panel state across clicks.
-	open, explicitPath, hasPath := indexState(r)
-	panelPath := currentDir
-	if open && hasPath {
-		panelPath = explicitPath
+	// Resolve the sidebar's sticky directory. ?dir= wins when present;
+	// otherwise default to the note's parent.
+	explicitDir, hasDir := parseDirParam(r)
+	sidebarDir := currentDir
+	if hasDir {
+		sidebarDir = explicitDir
 	}
-	linkQuery := indexQuery(open, panelPath)
+	dq := dirQuery(sidebarDir)
 
-	html, fm, err := s.renderer.Render(data, currentDir, linkQuery)
+	html, fm, err := s.renderer.Render(data, currentDir, dq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -193,64 +158,106 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		title = fm.Title
 	}
 
-	lf := s.buildLayoutFields(title, reqPath, open, panelPath)
-	lf.ToggleHref = toggleHref(reqPath, open, currentDir)
-
-	if open {
-		// A read failure (invalid ?path=, permissions, vanished dir)
-		// shouldn't 500 the note view — log and render without a card
-		// so the user still sees the note.
-		card, err := s.buildDirIndex(panelPath, reqPath)
-		if err != nil {
-			s.logger.Warn("index card build failed", "path", panelPath, "err", err)
-		} else {
-			lf.IndexCard = card
+	// Note-pane partial response: return only the note body, no chrome.
+	if hxTargetedAt(r, "note-pane") {
+		partial := NotePartialData{
+			NotePath:    reqPath,
+			Frontmatter: fm,
+			HTML:        template.HTML(html),
+			SSEWatch:    viewSSEWatch(reqPath),
+			ViewHref:    "/view/" + reqPath + dq,
+			DirQuery:    dq,
 		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := s.templates.renderNotePartial(w, partial); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Full page: build the sidebar too.
+	lf := s.buildLayoutFields(title, reqPath, sidebarDir)
+	card, err := s.buildDirIndex(sidebarDir, reqPath)
+	if err != nil {
+		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
 	}
 
 	view := ViewData{
 		layoutFields: lf,
-		FilePath:     reqPath,
+		NotePath:     reqPath,
 		Frontmatter:  fm,
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
-		ViewHref:     "/view/" + reqPath + lf.IndexQuery,
+		ViewHref:     "/view/" + reqPath + dq,
+		IndexCard:    card,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.renderView(w, view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	}
+}
+
+// writeSidebarPartial renders just the sidebar fragment for a given
+// directory and optional in-view note (for sticky links). The
+// sidebarDir must be fully resolved before calling — this function
+// takes no http.Request and has no fallback logic.
+func (s *Server) writeSidebarPartial(w http.ResponseWriter, sidebarDir, notePath string) {
+	card, err := s.buildDirIndex(sidebarDir, notePath)
+	if err != nil {
+		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
+		card = &IndexCard{Mode: "dir", Empty: "Failed to read directory."}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// writeNoteNotFoundPartial serves the "note not found" fragment for an
+// HX-Target: note-pane request, using HTTP 200 so HTMX swaps it in
+// rather than skipping the swap on a 4xx status.
+func (s *Server) writeNoteNotFoundPartial(w http.ResponseWriter, reqPath string) {
+	partial := NotePartialData{
+		NotePath: reqPath,
+		HTML:     template.HTML(`<p class="text-gray-500 text-center py-8">Note not found.</p>`),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderNotePartial(w, partial); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 // buildDirIndex assembles an IndexCard in directory mode for a path
 // relative to the notes root. notePath is the note currently in view
 // (if any) — directory links in the resulting card will target that
-// note with an updated ?path= so the note stays visible when the user
-// navigates the panel. Pass "" for the standalone page.
-func (s *Server) buildDirIndex(panelPath, notePath string) (*IndexCard, error) {
-	absPath, err := SafePath(s.root, panelPath)
+// note with an updated ?dir= so the note stays visible when the user
+// navigates the panel. Pass "" for the empty-state page.
+func (s *Server) buildDirIndex(sidebarDir, notePath string) (*IndexCard, error) {
+	absPath, err := SafePath(s.root, sidebarDir)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := readDirEntries(absPath, panelPath, notePath)
+	entries, err := readDirEntries(absPath, sidebarDir, notePath)
 	if err != nil {
 		return nil, err
 	}
 	return &IndexCard{
 		Mode:        "dir",
-		Breadcrumbs: buildBreadcrumbs(panelPath, notePath),
+		Breadcrumbs: buildBreadcrumbs(sidebarDir, notePath),
 		Entries:     entries,
 		Empty:       "No files here.",
 	}, nil
 }
 
-func dirTitle(reqPath string) string {
-	if reqPath == "" {
+// noteParentDir returns the relative directory of a note path, or "" for
+// notes at the root.
+func noteParentDir(notePath string) string {
+	d := filepath.Dir(notePath)
+	if d == "." {
 		return ""
 	}
-	return reqPath
+	return d
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {

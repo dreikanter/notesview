@@ -5,44 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ if .Title }}{{ .Title }} — {{ end }}notesview</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // Pre-paint: apply sidebar-open class from localStorage before first
+    // render so the user never sees a flash of wrong sidebar state.
+    try {
+      if (localStorage.getItem('notesview.sidebarOpen') === '1') {
+        document.documentElement.classList.add('sidebar-open');
+      }
+    } catch (e) {}
+  </script>
 </head>
-<body
-  hx-boost="true"
-  hx-target="#content"
-  hx-select="#content"
-  hx-swap="outerHTML"
-  hx-select-oob="#topbar-actions:outerHTML">
-  <div id="app">
-    <header id="topbar" class="fixed top-0 left-0 right-0 h-12 bg-white border-b border-gray-200 flex items-center px-3 gap-2 z-[100]">
-      {{ template "topbar_actions" . }}
-    </header>
-    {{ template "content" . }}
-  </div>
+<body data-note-path="{{ .NotePath }}">
+  <header id="topbar" class="fixed top-0 left-0 right-0 h-12 bg-white border-b border-gray-200 flex items-center px-3 gap-2 z-[100]">
+    <button
+      id="sidebar-toggle"
+      type="button"
+      aria-label="Toggle files index"
+      aria-controls="sidebar"
+      aria-expanded="false"
+      class="bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg text-gray-500 rounded-md leading-none flex-shrink-0 hover:bg-gray-50 hover:text-gray-900">&#9776;</button>
+    <div class="flex-1 flex items-center justify-end gap-2 overflow-hidden">
+      {{ if .EditPath }}
+      <button
+        id="edit-btn"
+        type="button"
+        hx-post="{{ .EditHref }}"
+        hx-swap="none"
+        class="bg-transparent border border-gray-300 rounded-md cursor-pointer px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0 hover:bg-gray-50 hover:border-gray-200">Edit</button>
+      {{ end }}
+    </div>
+  </header>
+
+  <aside id="sidebar" class="fixed top-12 left-0 bottom-0 w-[320px] bg-white border-r border-gray-200 overflow-y-auto">
+    {{ template "sidebar_body" . }}
+  </aside>
+
+  <main id="note-pane" class="fixed top-12 left-0 right-0 bottom-0 overflow-y-auto px-6 py-8 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
+    {{ template "note_pane_body" . }}
+  </main>
+
   <script type="module" src="/static/app.js"></script>
 </body>
 </html>
-{{ end }}
-
-{{ define "topbar_actions" }}<div id="topbar-actions" class="flex-1 flex items-center gap-2 overflow-hidden">
-  {{ if .ShowToggle }}
-  <a
-    id="index-toggle"
-    href="{{ .ToggleHref }}"
-    aria-label="Toggle files index"
-    aria-pressed="{{ if .IndexOpen }}true{{ else }}false{{ end }}"
-    class="bg-transparent border-0 cursor-pointer px-2 py-1.5 text-lg text-gray-500 rounded-md leading-none flex-shrink-0 no-underline hover:bg-gray-50 hover:text-gray-900">&#9776;</a>
-  {{ else }}
-  <span class="w-8 flex-shrink-0" aria-hidden="true"></span>
-  {{ end }}
-  <div class="flex-1 flex items-center justify-end gap-2 overflow-hidden">
-    {{ if .EditPath }}
-    <button
-      id="edit-btn"
-      type="button"
-      hx-post="{{ .EditHref }}"
-      hx-swap="none"
-      class="bg-transparent border border-gray-300 rounded-md cursor-pointer px-3 py-1 text-[13px] text-gray-900 font-sans flex-shrink-0 hover:bg-gray-50 hover:border-gray-200">Edit</button>
-    {{ end }}
-  </div>
-</div>
 {{ end }}

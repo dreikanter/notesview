@@ -1,11 +1,11 @@
 {{ define "breadcrumbs" }}<nav class="flex-1 flex items-center gap-1 text-sm text-gray-500 overflow-hidden whitespace-nowrap">
-  <a class="text-blue-600 no-underline hover:underline" href="{{ .HomeHref }}" aria-label="Home">&#8962;</a>
+  <a class="text-blue-600 no-underline hover:underline" href="{{ .HomeHref }}" hx-boost="true" hx-target="#sidebar" hx-swap="innerHTML" aria-label="Home">&#8962;</a>
   {{ range .Crumbs }}
   <span class="text-gray-400 select-none">/</span>
   {{ if .Current }}
   <span aria-current="page" class="text-gray-900 overflow-hidden text-ellipsis">{{ .Label }}</span>
   {{ else }}
-  <a class="text-blue-600 no-underline hover:underline" href="{{ .Href }}">{{ .Label }}</a>
+  <a class="text-blue-600 no-underline hover:underline" href="{{ .Href }}" hx-boost="true" hx-target="#sidebar" hx-swap="innerHTML">{{ .Label }}</a>
   {{ end }}
   {{ end }}
 </nav>{{ end }}

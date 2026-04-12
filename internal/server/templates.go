@@ -9,33 +9,26 @@ import (
 	"github.com/dreikanter/notesview/web"
 )
 
-// Crumb is one segment of the breadcrumbs nav.
 type Crumb struct {
 	Label   string
 	Href    string
 	Current bool
 }
 
-// BreadcrumbsData is what the breadcrumbs partial renders. HomeHref is the
-// root link, computed in the handler so it can preserve the index query
-// string — the partial itself is a dumb renderer.
 type BreadcrumbsData struct {
 	HomeHref string
 	Crumbs   []Crumb
 }
 
-// IndexEntry is one row in the index card's entry list.
 type IndexEntry struct {
 	Name  string
 	IsDir bool
 	Href  string
 }
 
-// IndexCard is the rendered-side shape of the navigation panel. Mode is a
-// discriminator for future non-directory sources (search, tag). For now
-// only "dir" is populated and the Breadcrumbs field carries the current
-// path; future modes would add their own header fields (Query, Tag, …)
-// rendered by the index_card template's mode switch.
+// IndexCard is the sidebar's data shape. Mode is kept as an extensibility
+// hook for future non-directory sources (search, tag); today only "dir"
+// is populated.
 type IndexCard struct {
 	Mode        string
 	Breadcrumbs BreadcrumbsData
@@ -43,59 +36,58 @@ type IndexCard struct {
 	Empty       string
 }
 
-// layoutFields is the common chrome passed to every page.
-//
-// IndexOpen drives whether the index card is rendered alongside the note
-// card. It is set from the `?index=dir` query parameter so the state is
-// linkable and carried across HTMX-boosted navigation via per-link query
-// string preservation (see IndexQuery).
-//
-// ShowToggle is true on view pages (where the note card is the fallback
-// view and the user can choose whether to also see the index) and false
-// on browse pages (where the index IS the page and hiding it would leave
-// a blank screen). ToggleHref is the URL the hamburger links to when
-// ShowToggle is true.
+// layoutFields is the common chrome passed to every full-page render.
+// DirQuery is the canonical "?dir=..." suffix appended to hrefs that
+// need to preserve the sidebar's sticky directory (currently just the
+// SSE live-reload hx-get URL).
 type layoutFields struct {
-	Title      string
-	EditPath   string
-	EditHref   string
-	IndexOpen  bool
-	IndexQuery string
-	IndexCard  *IndexCard
-	ShowToggle bool
-	ToggleHref string
+	Title    string
+	EditPath string
+	EditHref string
+	DirQuery string
 }
 
-// ViewData is the render context for a single-file view.
+// ViewData is the full-page render context for a note view.
 type ViewData struct {
 	layoutFields
-	FilePath    string
+	NotePath    string
 	Frontmatter *renderer.Frontmatter
 	HTML        template.HTML
 	SSEWatch    string
 	ViewHref    string
+	IndexCard   *IndexCard
 }
 
-// BrowseData is the render context for a directory listing. The browse
-// page is index-card-only — there is no note card — so it reuses the
-// IndexCard from layoutFields and adds nothing of its own beyond the path
-// stashed on #content for client-side reference.
-type BrowseData struct {
-	layoutFields
-	DirPath string
+// NotePartialData is the render context for an HX-Target: note-pane
+// partial response. Only the fields the note-pane template needs;
+// no sidebar, no topbar.
+type NotePartialData struct {
+	NotePath    string
+	Frontmatter *renderer.Frontmatter
+	HTML        template.HTML
+	SSEWatch    string
+	ViewHref    string
+	DirQuery    string
 }
 
-// templateSet holds the pre-parsed template sets used by the server.
+// SidebarPartialData is the render context for an HX-Target: sidebar
+// partial response. Only the fields the sidebar-body template needs.
+type SidebarPartialData struct {
+	IndexCard *IndexCard
+}
+
 type templateSet struct {
-	view   *template.Template
-	browse *template.Template
+	view    *template.Template
+	sidebar *template.Template
+	note    *template.Template
 }
 
-// partials are template files shared by every page.
 var partials = []string{
 	"templates/layout.html",
 	"templates/breadcrumbs.html",
 	"templates/index_card.html",
+	"templates/sidebar_body.html",
+	"templates/note_pane_body.html",
 }
 
 func loadTemplates() (*templateSet, error) {
@@ -103,11 +95,15 @@ func loadTemplates() (*templateSet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse view template: %w", err)
 	}
-	browse, err := parsePage("templates/browse.html")
+	sidebar, err := parsePartial("sidebar_body")
 	if err != nil {
-		return nil, fmt.Errorf("parse browse template: %w", err)
+		return nil, fmt.Errorf("parse sidebar partial: %w", err)
 	}
-	return &templateSet{view: view, browse: browse}, nil
+	note, err := parsePartial("note_pane_body")
+	if err != nil {
+		return nil, fmt.Errorf("parse note-pane partial: %w", err)
+	}
+	return &templateSet{view: view, sidebar: sidebar, note: note}, nil
 }
 
 func parsePage(page string) (*template.Template, error) {
@@ -116,10 +112,21 @@ func parsePage(page string) (*template.Template, error) {
 	return template.ParseFS(web.TemplatesFS, files...)
 }
 
+// parsePartial loads only the files needed to render one partial
+// template, so a partial response doesn't accidentally include the
+// full layout.
+func parsePartial(name string) (*template.Template, error) {
+	return template.ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/breadcrumbs.html", "templates/index_card.html")
+}
+
 func (t *templateSet) renderView(w io.Writer, data ViewData) error {
 	return t.view.ExecuteTemplate(w, "layout", data)
 }
 
-func (t *templateSet) renderBrowse(w io.Writer, data BrowseData) error {
-	return t.browse.ExecuteTemplate(w, "layout", data)
+func (t *templateSet) renderNotePartial(w io.Writer, data NotePartialData) error {
+	return t.note.ExecuteTemplate(w, "note_pane_body", data)
+}
+
+func (t *templateSet) renderSidebarPartial(w io.Writer, data SidebarPartialData) error {
+	return t.sidebar.ExecuteTemplate(w, "sidebar_body", data)
 }

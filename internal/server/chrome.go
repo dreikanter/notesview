@@ -8,24 +8,24 @@ import (
 	"strings"
 )
 
-// indexQuery formats the canonical query suffix that preserves the
-// panel's state across links. Empty string means closed. When open the
-// panel path is always explicit — callers must resolve any default
-// (e.g. the note's parent directory) before constructing the query —
-// so the rendered URL is unambiguous and sticky navigation works.
-func indexQuery(open bool, path string) string {
-	if !open {
+// dirQuery formats the canonical query suffix that carries the sidebar's
+// sticky directory across links. Empty string means "no sticky directory"
+// (the URL has no ?dir= at all). When non-empty the path is always
+// explicit — callers resolve any default (note's parent directory)
+// before constructing the query.
+func dirQuery(path string) string {
+	if path == "" {
 		return ""
 	}
-	return "?index=dir&path=" + url.QueryEscape(path)
+	return "?dir=" + url.QueryEscape(path)
 }
 
-// dirLinkHref builds an href that repositions the index panel to a new
-// directory while preserving the current note (sticky model). notePath
-// is the note that should stay visible, or "" for the standalone index
-// page where there's no note to keep.
-func dirLinkHref(notePath, dirPath string) string {
-	q := "?index=dir&path=" + url.QueryEscape(dirPath)
+// dirLinkHref builds an href that repositions the sidebar to a new
+// directory while keeping the current note in view (sticky model).
+// notePath is the note that should stay visible, or "" for the
+// empty-state page where there's no note to keep.
+func dirLinkHref(notePath, newDir string) string {
+	q := dirQuery(newDir)
 	if notePath == "" {
 		return "/" + q
 	}
@@ -33,26 +33,24 @@ func dirLinkHref(notePath, dirPath string) string {
 }
 
 // fileLinkHref builds an href that changes the note while keeping the
-// panel on the same directory. This is the other half of the sticky
-// model: clicking a sibling file swaps the note card; the panel stays.
-func fileLinkHref(filePath, panelPath string) string {
-	return "/view/" + filePath + "?index=dir&path=" + url.QueryEscape(panelPath)
+// sidebar on the same directory. The other half of the sticky model.
+func fileLinkHref(filePath, sidebarDir string) string {
+	return "/view/" + filePath + dirQuery(sidebarDir)
 }
 
-// buildBreadcrumbs constructs the panel's header trail. Intermediate
+// buildBreadcrumbs constructs the sidebar header trail. Intermediate
 // segments link back up the directory chain via dirLinkHref so a click
-// only repositions the panel — the note card is untouched. The final
-// segment is marked Current (no link) since it's the directory the
-// panel is already showing.
-func buildBreadcrumbs(panelPath, notePath string) BreadcrumbsData {
+// only repositions the sidebar; the note is untouched. The final
+// segment is marked Current (no link).
+func buildBreadcrumbs(sidebarDir, notePath string) BreadcrumbsData {
 	data := BreadcrumbsData{
 		HomeHref: dirLinkHref(notePath, ""),
 	}
-	panelPath = strings.Trim(panelPath, "/")
-	if panelPath == "" {
+	sidebarDir = strings.Trim(sidebarDir, "/")
+	if sidebarDir == "" {
 		return data
 	}
-	segments := strings.Split(panelPath, "/")
+	segments := strings.Split(sidebarDir, "/")
 	accumulated := ""
 	for i, seg := range segments {
 		if accumulated == "" {
@@ -75,7 +73,7 @@ func buildBreadcrumbs(panelPath, notePath string) BreadcrumbsData {
 // readDirEntries returns the visible entries of a notes directory as
 // IndexEntry values. Directory entries link through dirLinkHref so the
 // note stays put on click; file entries link through fileLinkHref so
-// the panel stays put on click.
+// the sidebar stays put on click.
 func readDirEntries(absPath, relPath, notePath string) ([]IndexEntry, error) {
 	dirEntries, err := os.ReadDir(absPath)
 	if err != nil {
