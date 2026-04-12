@@ -68,7 +68,7 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	// Consume [[ + UID + ]]
 	block.Advance(2 + end + 2)
 	link := ast.NewLink()
-	link.Destination = []byte("/view/" + relPath + state.dirQuery)
+	link.Destination = []byte("/view/" + relPath)
 	link.SetAttributeString("class", []byte("uid-link"))
 	link.AppendChild(link, ast.NewString([]byte(uid)))
 	return link
@@ -103,12 +103,10 @@ var noteLinkStateKey = parser.NewContextKey()
 
 // noteLinkState is the per-request context the extension reads during
 // parsing. currentDir is the note's parent directory (used to resolve
-// relative .md links); dirQuery is the URL suffix ("?dir=..." or "")
-// threaded into every rewritten internal href for panel state coherence.
+// relative .md links).
 type noteLinkState struct {
 	idx        *index.Index
 	currentDir string
-	dirQuery   string
 }
 
 // noteLinkExtension wires the AST transformer and custom link renderer
@@ -173,7 +171,7 @@ func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 	if strings.HasPrefix(dest, "note://") {
 		uid := strings.TrimPrefix(dest, "note://")
 		if relPath, ok := s.idx.Lookup(uid); ok {
-			n.Destination = []byte("/view/" + relPath + s.dirQuery)
+			n.Destination = []byte("/view/" + relPath)
 		} else {
 			n.Destination = []byte("#")
 			n.SetAttributeString("class", []byte("broken-link"))
@@ -191,7 +189,7 @@ func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 	}
 	resolved := path.Clean(path.Join(s.currentDir, dest))
 	resolved = strings.TrimPrefix(resolved, "/")
-	n.Destination = []byte("/view/" + resolved + s.dirQuery)
+	n.Destination = []byte("/view/" + resolved)
 }
 
 // noteLinkRenderer overrides goldmark's default *ast.Link renderer so

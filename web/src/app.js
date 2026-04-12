@@ -1,10 +1,9 @@
 // notesview front-end bootstrap.
 //
 // Loads HTMX + SSE, runs syntax highlighting on every swap, and owns
-// the sidebar toggle (client-side visibility with localStorage +
-// on-open sidebar refresh).
+// the sidebar toggle and sidebar mode state (files/tags/tag).
 
-import 'htmx.org';
+import htmx from 'htmx.org';
 import 'htmx-ext-sse';
 import hljs from 'highlight.js/lib/common';
 
@@ -18,11 +17,14 @@ function highlightIn(root) {
 document.addEventListener('DOMContentLoaded', function () {
   highlightIn(document);
   wireSidebarToggle();
+  restoreSidebarState();
 });
 
 document.body.addEventListener('htmx:afterSwap', function (e) {
   highlightIn(e.target);
 });
+
+// --- Sidebar toggle ---
 
 function wireSidebarToggle() {
   const btn = document.getElementById('sidebar-toggle');
@@ -42,29 +44,93 @@ function toggleSidebar() {
   } catch (e) {}
 
   if (open) {
-    // Refresh the sidebar for the current note: while hidden, the
-    // sidebar's DOM froze at its last render, but the user may have
-    // clicked wiki-links and moved to a different note.
-    window.htmx && window.htmx.ajax('GET', currentSidebarUrl(), {
-      target: '#sidebar',
-      swap: 'innerHTML',
-    });
-  } else {
-    // Closing strips ?dir= from the URL (intentional, per spec). No
-    // pushState — this is a UI preference, not a navigation event.
-    const url = new URL(window.location.href);
-    url.searchParams.delete('dir');
-    history.replaceState(null, '', url.toString());
+    refreshSidebar();
   }
 }
 
-// currentSidebarUrl builds the URL for refreshing the sidebar for the
-// current note. The note path is stashed on <body> by the layout
-// template (data-note-path) and re-stashed on #note-card for resilience
-// across note-pane swaps.
-function currentSidebarUrl() {
-  const notePath = (document.body.dataset.notePath || '').replace(/^\/+/, '');
-  const parent = notePath ? notePath.replace(/[^/]*$/, '').replace(/\/$/, '') : '';
-  const base = notePath ? `/view/${notePath}` : '/';
-  return `${base}?dir=${encodeURIComponent(parent)}`;
+// --- Sidebar mode state ---
+
+function refreshSidebar() {
+  const mode = getSidebarMode();
+  let url;
+  if (mode === 'tags') {
+    url = '/tags';
+  } else if (mode === 'tag') {
+    const tag = getSidebarTag();
+    url = tag ? `/tags/${encodeURIComponent(tag)}` : '/tags';
+  } else {
+    const dir = getSidebarDir();
+    url = `/dir/${encodePath(dir)}`;
+  }
+  htmx.ajax('GET', url, {
+    target: '#sidebar',
+    swap: 'innerHTML',
+  });
 }
+
+function restoreSidebarState() {
+  const mode = getSidebarMode();
+  if (mode === 'files') return; // Server already rendered files mode
+  refreshSidebar();
+}
+
+function getSidebarMode() {
+  try { return localStorage.getItem('notesview.sidebarMode') || 'files'; } catch (e) { return 'files'; }
+}
+
+function getSidebarTag() {
+  try { return localStorage.getItem('notesview.sidebarTag') || ''; } catch (e) { return ''; }
+}
+
+function getSidebarDir() {
+  try { return localStorage.getItem('notesview.sidebarDir') || ''; } catch (e) { return ''; }
+}
+
+// Encode a directory path for use in URLs, encoding each segment
+// individually while preserving literal / separators.
+function encodePath(p) {
+  if (!p) return '';
+  return p.split('/').map(encodeURIComponent).join('/');
+}
+
+// Global functions called from template onclick handlers.
+// These update localStorage before HTMX fires the request.
+
+// switchToFiles navigates the sidebar to the root directory.
+// The breadcrumb trail handles navigation within the directory tree.
+window.switchToFiles = function() {
+  try {
+    localStorage.setItem('notesview.sidebarMode', 'files');
+    localStorage.setItem('notesview.sidebarDir', '');
+  } catch (e) {}
+  htmx.ajax('GET', '/dir/', {
+    target: '#sidebar',
+    swap: 'innerHTML',
+  });
+};
+
+window.switchToTags = function() {
+  try {
+    localStorage.setItem('notesview.sidebarMode', 'tags');
+  } catch (e) {}
+  htmx.ajax('GET', '/tags', {
+    target: '#sidebar',
+    swap: 'innerHTML',
+  });
+};
+
+window.setSidebarTag = function(tag) {
+  try {
+    localStorage.setItem('notesview.sidebarMode', 'tag');
+    localStorage.setItem('notesview.sidebarTag', tag);
+  } catch (e) {}
+};
+
+window.setSidebarDir = function(href) {
+  try {
+    // Extract dir path from /dir/... href
+    const dir = href.replace(/^\/dir\//, '');
+    localStorage.setItem('notesview.sidebarMode', 'files');
+    localStorage.setItem('notesview.sidebarDir', decodeURIComponent(dir));
+  } catch (e) {}
+};

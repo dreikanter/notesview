@@ -84,7 +84,6 @@ func TestRenderView(t *testing.T) {
 			Title:    "Test Note",
 			EditPath: "notes/test.md",
 			EditHref: "/edit/notes/test.md",
-			DirQuery: "?dir=notes",
 		},
 		NotePath:  "notes/test.md",
 		NoteTitle: "Test Note",
@@ -95,12 +94,12 @@ func TestRenderView(t *testing.T) {
 		},
 		HTML:     template.HTML("<p>Hello world</p>"),
 		SSEWatch: "/events?watch=notes%2Ftest.md",
-		ViewHref: "/view/notes/test.md?dir=notes",
+		ViewHref: "/view/notes/test.md",
 		IndexCard: &IndexCard{
 			Mode: "dir",
 			Breadcrumbs: BreadcrumbsData{
-				HomeHref: "/view/",
-				Crumbs:   []Crumb{{Label: "notes", Href: "/view/notes/", Current: true}},
+				Mode:   "dir",
+				Crumbs: []Crumb{{Label: "notes", Href: "/dir/notes", Current: true}},
 			},
 			Entries: []IndexEntry{
 				{Name: "test.md", IsDir: false, Href: "/view/notes/test.md"},
@@ -220,8 +219,8 @@ func TestRenderSidebarPartial(t *testing.T) {
 		IndexCard: &IndexCard{
 			Mode: "dir",
 			Breadcrumbs: BreadcrumbsData{
-				HomeHref: "/view/",
-				Crumbs:   []Crumb{{Label: "docs", Href: "/view/docs/", Current: true}},
+				Mode:   "dir",
+				Crumbs: []Crumb{{Label: "docs", Href: "/dir/docs", Current: true}},
 			},
 			Entries: []IndexEntry{
 				{Name: "readme.md", IsDir: false, Href: "/view/docs/readme.md"},

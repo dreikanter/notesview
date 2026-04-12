@@ -15,7 +15,7 @@ func TestSSEConnection(t *testing.T) {
 	testFile := filepath.Join(dir, "test.md")
 	os.WriteFile(testFile, []byte("# Test"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -46,7 +46,7 @@ func TestSSEConnection(t *testing.T) {
 
 func TestServerShutdownStopsHub(t *testing.T) {
 	dir := t.TempDir()
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 
 	srv := &Server{root: dir, sseHub: hub}
@@ -63,7 +63,7 @@ func TestServerShutdownStopsHub(t *testing.T) {
 
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -79,7 +79,7 @@ func TestSSEMultiClientBroadcast(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "shared.md"), []byte("# Shared"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -117,7 +117,7 @@ func TestSSESelectiveBroadcast(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("A"), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -151,7 +151,7 @@ func TestSSEPerPathDebounce(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("A"), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -189,7 +189,7 @@ func TestSSEClientCleanupOnDisconnect(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("# Test"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -241,7 +241,7 @@ func TestSSENonBlockingSend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("data"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewSSEHub(dir, nil, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 

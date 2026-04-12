@@ -6,26 +6,23 @@ import (
 	"testing"
 )
 
-func TestBuildBreadcrumbs(t *testing.T) {
+func TestBuildDirBreadcrumbs(t *testing.T) {
 	tests := []struct {
 		name       string
 		sidebarDir string
-		notePath   string
-		wantHome   string
+		wantMode   string
 		wantCrumbs []Crumb
 	}{
 		{
 			name:       "empty sidebar dir",
 			sidebarDir: "",
-			notePath:   "2026/03/hello.md",
-			wantHome:   "/view/2026/03/hello.md",
+			wantMode:   "dir",
 			wantCrumbs: nil,
 		},
 		{
 			name:       "single segment",
 			sidebarDir: "2026",
-			notePath:   "2026/03/hello.md",
-			wantHome:   "/view/2026/03/hello.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
 				{Label: "2026", Current: true},
 			},
@@ -33,30 +30,27 @@ func TestBuildBreadcrumbs(t *testing.T) {
 		{
 			name:       "two segments",
 			sidebarDir: "2026/03",
-			notePath:   "2026/03/hello.md",
-			wantHome:   "/view/2026/03/hello.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
-				{Label: "2026", Href: "/view/2026/03/hello.md?dir=2026"},
+				{Label: "2026", Href: "/dir/2026"},
 				{Label: "03", Current: true},
 			},
 		},
 		{
 			name:       "deeply nested path",
 			sidebarDir: "a/b/c/d",
-			notePath:   "note.md",
-			wantHome:   "/view/note.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
-				{Label: "a", Href: "/view/note.md?dir=a"},
-				{Label: "b", Href: "/view/note.md?dir=a%2Fb"},
-				{Label: "c", Href: "/view/note.md?dir=a%2Fb%2Fc"},
+				{Label: "a", Href: "/dir/a"},
+				{Label: "b", Href: "/dir/a/b"},
+				{Label: "c", Href: "/dir/a/b/c"},
 				{Label: "d", Current: true},
 			},
 		},
 		{
 			name:       "trailing slash stripped",
 			sidebarDir: "2026/",
-			notePath:   "note.md",
-			wantHome:   "/view/note.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
 				{Label: "2026", Current: true},
 			},
@@ -64,8 +58,7 @@ func TestBuildBreadcrumbs(t *testing.T) {
 		{
 			name:       "leading slash stripped",
 			sidebarDir: "/2026",
-			notePath:   "note.md",
-			wantHome:   "/view/note.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
 				{Label: "2026", Current: true},
 			},
@@ -73,20 +66,9 @@ func TestBuildBreadcrumbs(t *testing.T) {
 		{
 			name:       "leading and trailing slashes stripped",
 			sidebarDir: "/2026/03/",
-			notePath:   "note.md",
-			wantHome:   "/view/note.md",
+			wantMode:   "dir",
 			wantCrumbs: []Crumb{
-				{Label: "2026", Href: "/view/note.md?dir=2026"},
-				{Label: "03", Current: true},
-			},
-		},
-		{
-			name:       "no note path",
-			sidebarDir: "2026/03",
-			notePath:   "",
-			wantHome:   "/",
-			wantCrumbs: []Crumb{
-				{Label: "2026", Href: "/?dir=2026"},
+				{Label: "2026", Href: "/dir/2026"},
 				{Label: "03", Current: true},
 			},
 		},
@@ -94,9 +76,9 @@ func TestBuildBreadcrumbs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildBreadcrumbs(tt.sidebarDir, tt.notePath)
-			if got.HomeHref != tt.wantHome {
-				t.Errorf("HomeHref = %q, want %q", got.HomeHref, tt.wantHome)
+			got := buildDirBreadcrumbs(tt.sidebarDir)
+			if got.Mode != tt.wantMode {
+				t.Errorf("Mode = %q, want %q", got.Mode, tt.wantMode)
 			}
 			if len(got.Crumbs) != len(tt.wantCrumbs) {
 				t.Fatalf("len(Crumbs) = %d, want %d; got %+v", len(got.Crumbs), len(tt.wantCrumbs), got.Crumbs)
@@ -137,7 +119,7 @@ func TestReadDirEntries(t *testing.T) {
 	}
 
 	t.Run("filters and sorts correctly", func(t *testing.T) {
-		entries, err := readDirEntries(tmp, "notes", "current.md")
+		entries, err := readDirEntries(tmp, "notes")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -162,44 +144,44 @@ func TestReadDirEntries(t *testing.T) {
 		}
 	})
 
-	t.Run("directory entries use dirLinkHref", func(t *testing.T) {
-		entries, err := readDirEntries(tmp, "notes", "current.md")
+	t.Run("directory entries link to /dir/", func(t *testing.T) {
+		entries, err := readDirEntries(tmp, "notes")
 		if err != nil {
 			t.Fatal(err)
 		}
-		// "alpha" dir entry should link via dirLinkHref
+		// "alpha" dir entry should link to /dir/notes/alpha
 		alphaEntry := entries[0]
-		want := "/view/current.md?dir=notes%2Falpha"
+		want := "/dir/notes/alpha"
 		if alphaEntry.Href != want {
 			t.Errorf("dir href = %q, want %q", alphaEntry.Href, want)
 		}
 	})
 
-	t.Run("file entries use fileLinkHref", func(t *testing.T) {
-		entries, err := readDirEntries(tmp, "notes", "current.md")
+	t.Run("file entries link to /view/", func(t *testing.T) {
+		entries, err := readDirEntries(tmp, "notes")
 		if err != nil {
 			t.Fatal(err)
 		}
 		// "apple.md" is the first file entry (index 2)
 		appleEntry := entries[2]
-		want := "/view/notes/apple.md?dir=notes"
+		want := "/view/notes/apple.md"
 		if appleEntry.Href != want {
 			t.Errorf("file href = %q, want %q", appleEntry.Href, want)
 		}
 	})
 
 	t.Run("empty relPath", func(t *testing.T) {
-		entries, err := readDirEntries(tmp, "", "current.md")
+		entries, err := readDirEntries(tmp, "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		// With empty relPath, dir entry name is used directly
 		alphaEntry := entries[0]
-		wantDirHref := "/view/current.md?dir=alpha"
+		wantDirHref := "/dir/alpha"
 		if alphaEntry.Href != wantDirHref {
 			t.Errorf("dir href = %q, want %q", alphaEntry.Href, wantDirHref)
 		}
-		// File entry with empty relPath: no dir query
+		// File entry with empty relPath
 		appleEntry := entries[2]
 		wantFileHref := "/view/apple.md"
 		if appleEntry.Href != wantFileHref {
@@ -208,7 +190,7 @@ func TestReadDirEntries(t *testing.T) {
 	})
 
 	t.Run("nonexistent directory returns error", func(t *testing.T) {
-		_, err := readDirEntries(filepath.Join(tmp, "nonexistent"), "", "")
+		_, err := readDirEntries(filepath.Join(tmp, "nonexistent"), "")
 		if err == nil {
 			t.Error("expected error for nonexistent directory")
 		}
@@ -216,7 +198,7 @@ func TestReadDirEntries(t *testing.T) {
 
 	t.Run("empty directory returns empty slice", func(t *testing.T) {
 		empty := t.TempDir()
-		entries, err := readDirEntries(empty, "", "")
+		entries, err := readDirEntries(empty, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +213,7 @@ func TestReadDirEntries(t *testing.T) {
 		os.WriteFile(filepath.Join(filtered, "readme.txt"), nil, 0o644)
 		os.Mkdir(filepath.Join(filtered, ".dotdir"), 0o755)
 
-		entries, err := readDirEntries(filtered, "", "")
+		entries, err := readDirEntries(filtered, "")
 		if err != nil {
 			t.Fatal(err)
 		}

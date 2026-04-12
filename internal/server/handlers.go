@@ -11,32 +11,21 @@ import (
 	"strings"
 )
 
-// parseDirParam normalizes the ?dir=... query parameter. An empty
-// string means "no sticky directory" (reopen defaults to the note's
-// parent). A slash-trimmed non-empty value is the directory the sidebar
-// should show.
-func parseDirParam(r *http.Request) (dir string, hasDir bool) {
-	raw, ok := r.URL.Query()["dir"]
-	if !ok {
-		return "", false
-	}
-	return strings.Trim(raw[0], "/"), true
-}
-
-// buildLayoutFields assembles the common chrome every full-page render
-// needs. effectiveDir is the directory the sidebar is showing — already
-// resolved from either ?dir= or a handler-specific default (the note's
-// parent).
-func (s *Server) buildLayoutFields(title, editPath, effectiveDir string) layoutFields {
+// buildLayoutFields assembles the common chrome every full-page render needs.
+func (s *Server) buildLayoutFields(title, editPath string) layoutFields {
 	lf := layoutFields{
 		Title:    title,
 		EditPath: editPath,
-		DirQuery: dirQuery(effectiveDir),
 	}
 	if editPath != "" {
-		lf.EditHref = "/api/edit/" + viewPath(editPath)
+		lf.EditHref = editHref(editPath)
 	}
 	return lf
+}
+
+// editHref builds the API href for opening a note in the editor.
+func editHref(editPath string) string {
+	return "/api/edit/" + viewPath(editPath)
 }
 
 // viewSSEWatch is the value for the sse-connect attribute on note_pane_body.
@@ -65,13 +54,6 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sidebar partial response via HX-Target: sidebar on /
-	if hxTargetedAt(r, "sidebar") {
-		sidebarDir, _ := parseDirParam(r)
-		s.writeSidebarPartial(w, sidebarDir, "")
-		return
-	}
-
 	readme := filepath.Join(s.root, "README.md")
 	if _, err := os.Stat(readme); err == nil {
 		http.Redirect(w, r, "/view/README.md", http.StatusFound)
@@ -79,11 +61,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Empty state: render the two-pane layout with no note.
-	sidebarDir, _ := parseDirParam(r)
-	lf := s.buildLayoutFields("", "", sidebarDir)
-	card, err := s.buildDirIndex(sidebarDir, "")
+	lf := s.buildLayoutFields("", "")
+	card, err := s.buildDirIndex("")
 	if err != nil {
-		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
+		s.logger.Warn("sidebar build failed", "dir", "", "err", err)
 	}
 	s.index.Rebuild()
 
@@ -108,16 +89,6 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sidebar partial: don't read the file at all.
-	if hxTargetedAt(r, "sidebar") {
-		explicitDir, _ := parseDirParam(r)
-		if explicitDir == "" {
-			explicitDir = noteParentDir(reqPath)
-		}
-		s.writeSidebarPartial(w, explicitDir, reqPath)
-		return
-	}
-
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -135,16 +106,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 
 	currentDir := noteParentDir(reqPath)
 
-	// Resolve the sidebar's sticky directory. ?dir= wins when present;
-	// otherwise default to the note's parent.
-	explicitDir, hasDir := parseDirParam(r)
-	sidebarDir := currentDir
-	if hasDir {
-		sidebarDir = explicitDir
-	}
-	dq := dirQuery(sidebarDir)
-
-	html, fm, err := s.renderer.Render(data, currentDir, dq)
+	html, fm, err := s.renderer.Render(data, currentDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -157,10 +119,10 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	noteTitle := title
 
 	editPath := ""
-	editHref := ""
+	eHref := ""
 	if s.editor != "" {
 		editPath = reqPath
-		editHref = "/api/edit/" + viewPath(reqPath)
+		eHref = editHref(reqPath)
 	}
 
 	// Note-pane partial response: return only the note body, no chrome.
@@ -171,10 +133,9 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			Frontmatter: fm,
 			HTML:        template.HTML(html),
 			SSEWatch:    viewSSEWatch(reqPath),
-			ViewHref:    "/view/" + viewPath(reqPath) + dq,
-			DirQuery:    dq,
+			ViewHref:    "/view/" + viewPath(reqPath),
 			EditPath:    editPath,
-			EditHref:    editHref,
+			EditHref:    eHref,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := s.templates.renderNotePartial(w, partial); err != nil {
@@ -184,8 +145,9 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Full page: build the sidebar too.
-	lf := s.buildLayoutFields(title, editPath, sidebarDir)
-	card, err := s.buildDirIndex(sidebarDir, reqPath)
+	sidebarDir := currentDir
+	lf := s.buildLayoutFields(title, editPath)
+	card, err := s.buildDirIndex(sidebarDir)
 	if err != nil {
 		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
 	}
@@ -197,28 +159,12 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		Frontmatter:  fm,
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
-		ViewHref:     "/view/" + viewPath(reqPath) + dq,
+		ViewHref:     "/view/" + viewPath(reqPath),
 		IndexCard:    card,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.renderView(w, view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// writeSidebarPartial renders just the sidebar fragment for a given
-// directory and optional in-view note (for sticky links). The
-// sidebarDir must be fully resolved before calling — this function
-// takes no http.Request and has no fallback logic.
-func (s *Server) writeSidebarPartial(w http.ResponseWriter, sidebarDir, notePath string) {
-	card, err := s.buildDirIndex(sidebarDir, notePath)
-	if err != nil {
-		s.logger.Warn("sidebar build failed", "dir", sidebarDir, "err", err)
-		card = &IndexCard{Mode: "dir", Empty: "Failed to read directory."}
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -239,22 +185,19 @@ func (s *Server) writeNoteNotFoundPartial(w http.ResponseWriter, reqPath string)
 }
 
 // buildDirIndex assembles an IndexCard in directory mode for a path
-// relative to the notes root. notePath is the note currently in view
-// (if any) — directory links in the resulting card will target that
-// note with an updated ?dir= so the note stays visible when the user
-// navigates the panel. Pass "" for the empty-state page.
-func (s *Server) buildDirIndex(sidebarDir, notePath string) (*IndexCard, error) {
+// relative to the notes root.
+func (s *Server) buildDirIndex(sidebarDir string) (*IndexCard, error) {
 	absPath, err := SafePath(s.root, sidebarDir)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := readDirEntries(absPath, sidebarDir, notePath)
+	entries, err := readDirEntries(absPath, sidebarDir)
 	if err != nil {
 		return nil, err
 	}
 	return &IndexCard{
 		Mode:        "dir",
-		Breadcrumbs: buildBreadcrumbs(sidebarDir, notePath),
+		Breadcrumbs: buildDirBreadcrumbs(sidebarDir),
 		Entries:     entries,
 		Empty:       "No files here.",
 	}, nil
@@ -326,5 +269,62 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
 		s.logger.Warn("write response failed", "path", reqPath, "err", err)
+	}
+}
+
+func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
+	dirPath := r.PathValue("path")
+
+	card, err := s.buildDirIndex(dirPath)
+	if err != nil {
+		s.logger.Warn("sidebar build failed", "dir", dirPath, "err", err)
+		card = &IndexCard{Mode: "dir", Breadcrumbs: buildDirBreadcrumbs(dirPath), Empty: "Failed to read directory."}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
+	tags := s.tagIndex.Tags()
+	entries := make([]IndexEntry, len(tags))
+	for i, tag := range tags {
+		entries[i] = IndexEntry{
+			Name: tag,
+			Href: "/tags/" + tagPath(tag),
+		}
+	}
+	card := &IndexCard{
+		Mode:        "tags",
+		Breadcrumbs: buildTagsListBreadcrumbs(),
+		Entries:     entries,
+		Empty:       "No tags found.",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
+	tag := r.PathValue("tag")
+	notes := s.tagIndex.NotesByTag(tag)
+	entries := make([]IndexEntry, len(notes))
+	for i, notePath := range notes {
+		entries[i] = IndexEntry{
+			Name: notePath,
+			Href: "/view/" + viewPath(notePath),
+		}
+	}
+	card := &IndexCard{
+		Mode:        "tag",
+		Breadcrumbs: buildTagBreadcrumbs(tag),
+		Entries:     entries,
+		Empty:       "No notes with this tag.",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.renderSidebarPartial(w, SidebarPartialData{IndexCard: card}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

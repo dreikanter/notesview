@@ -16,8 +16,8 @@ type Crumb struct {
 }
 
 type BreadcrumbsData struct {
-	HomeHref string
-	Crumbs   []Crumb
+	Mode   string // "dir", "tags", or "tag"
+	Crumbs []Crumb
 }
 
 type IndexEntry struct {
@@ -37,14 +37,10 @@ type IndexCard struct {
 }
 
 // layoutFields is the common chrome passed to every full-page render.
-// DirQuery is the canonical "?dir=..." suffix appended to hrefs that
-// need to preserve the sidebar's sticky directory (currently just the
-// SSE live-reload hx-get URL).
 type layoutFields struct {
 	Title    string
 	EditPath string
 	EditHref string
-	DirQuery string
 }
 
 // ViewData is the full-page render context for a note view.
@@ -69,7 +65,6 @@ type NotePartialData struct {
 	HTML        template.HTML
 	SSEWatch    string
 	ViewHref    string
-	DirQuery    string
 	EditPath    string
 	EditHref    string
 }

@@ -63,10 +63,10 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Errorf("view: expected markdown-body wrapper in HTML")
 	}
 
-	// Test: /view/README.md?dir=2026 renders a two-pane view with the
-	// sidebar showing 2026/. Dir entries in the sidebar preserve the
-	// note (README.md) and advance the dir.
-	dirResp, err := http.Get(ts.URL + "/view/README.md?dir=2026")
+	// Test: /view/README.md renders a two-pane view with the sidebar
+	// showing the note's parent directory (root). Dir entries link to
+	// /dir/{path}, file entries link to /view/{path}.
+	dirResp, err := http.Get(ts.URL + "/view/README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,16 +76,15 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	if dirResp.StatusCode != http.StatusOK {
-		t.Errorf("/view/README.md?dir=2026: status = %d, body: %s", dirResp.StatusCode, viewBody)
+		t.Errorf("/view/README.md: status = %d, body: %s", dirResp.StatusCode, viewBody)
 	}
 	// Sidebar region must be present.
 	if !strings.Contains(string(viewBody), `id="sidebar"`) {
 		t.Errorf("expected #sidebar in response")
 	}
-	// The 2026/ dir contains only 03/. Its entry must link to
-	// /view/README.md?dir=2026%2F03 (note preserved, dir advanced).
-	if !strings.Contains(string(viewBody), `href="/view/README.md?dir=2026%2F03"`) {
-		t.Errorf("expected 03/ dir entry preserving README.md, got: %s", viewBody)
+	// The root dir contains 2026/. Its entry must link to /dir/2026.
+	if !strings.Contains(string(viewBody), `href="/dir/2026"`) {
+		t.Errorf("expected 2026/ dir entry linking to /dir/2026, got: %s", viewBody)
 	}
 
 	// Test: raw endpoint

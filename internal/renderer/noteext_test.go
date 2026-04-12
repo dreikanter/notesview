@@ -14,7 +14,7 @@ import (
 func TestWikiLinkResolved(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[20260331_9201]] for details.`), "", "")
+	html, _, err := r.Render([]byte(`See [[20260331_9201]] for details.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestWikiLinkResolved(t *testing.T) {
 func TestWikiLinkUnresolved(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[99999999_0000]] here.`), "", "")
+	html, _, err := r.Render([]byte(`See [[99999999_0000]] here.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,25 +48,13 @@ func TestWikiLinkUnresolved(t *testing.T) {
 func TestWikiLinkInvalidPattern(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[hello_world]] here.`), "", "")
+	html, _, err := r.Render([]byte(`See [[hello_world]] here.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(html, `class="uid-link"`) {
 		t.Errorf("[[non-UID]] should not be treated as wiki-link:\n%s", html)
 	}
-}
-
-// TestWikiLinkDirQuery verifies that [[UID]] links thread the
-// dirQuery suffix through.
-func TestWikiLinkDirQuery(t *testing.T) {
-	idx := setupTestIndex(t)
-	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[20260331_9201]].`), "", "?dir=2026%2F03")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md?dir=2026%2F03")
 }
 
 func setupTestIndex(t *testing.T) *index.Index {
@@ -89,7 +77,7 @@ func setupTestIndex(t *testing.T) *index.Index {
 func TestNoteProtocolLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [my todo](note://20260331_9201) for details.`), "", "")
+	html, _, err := r.Render([]byte(`See [my todo](note://20260331_9201) for details.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +89,7 @@ func TestNoteProtocolLink(t *testing.T) {
 func TestBrokenNoteLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [missing](note://99999999_0000) link.`), "", "")
+	html, _, err := r.Render([]byte(`See [missing](note://99999999_0000) link.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +102,7 @@ func TestBrokenNoteLink(t *testing.T) {
 func TestRelativeMdLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [other](../01/foo.md) for details.`), "2026/03", "")
+	html, _, err := r.Render([]byte(`See [other](../01/foo.md) for details.`), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +118,7 @@ func TestExternalLinksStayPlain(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `[web](https://example.com) [mail](mailto:a@b.com) [asset](/static/foo.png)`
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,9 +129,6 @@ func TestExternalLinksStayPlain(t *testing.T) {
 	}
 }
 
-// TestDirQueryThreading pins the per-request state contract: when the
-// renderer is given a dirQuery suffix, every internal /view/... href
-// it emits must carry that suffix.
 // TestDangerousURLsSanitized guards against malicious note content
 // smuggling javascript:/vbscript:/file:/data: URLs into the rendered
 // href. The renderer must rewrite these to "#" so clicking them is
@@ -153,7 +138,7 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `[xss](javascript:alert(1)) [vb](vbscript:msgbox) [f](file:///etc/passwd) [d](data:text/html,<script>alert(1)</script>)`
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +149,7 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	}
 	// An image data URL is allowed (links may legitimately point at
 	// base64 images in rare cases).
-	html2, _, err := r.Render([]byte(`[ok](data:image/png;base64,iVBORw0K)`), "", "")
+	html2, _, err := r.Render([]byte(`[ok](data:image/png;base64,iVBORw0K)`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,16 +158,19 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	}
 }
 
-func TestDirQueryThreading(t *testing.T) {
+// TestInternalLinksNoDirQuery verifies that internal links do not carry
+// any ?dir= query parameter.
+func TestInternalLinksNoDirQuery(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `See [todo](note://20260331_9201), [rel](../03/20260330_9198.md), and [[20260331_9201]].`
-	html, _, err := r.Render([]byte(input), "2026/03", "?dir=2026%2F03")
+	html, _, err := r.Render([]byte(input), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}
-	findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md?dir=2026%2F03")
-	findAnchor(t, html, "href", "/view/2026/03/20260330_9198.md?dir=2026%2F03")
-	a := findAnchor(t, html, "class", "uid-link")
-	assertAttr(t, a, "href", "/view/2026/03/20260331_9201_todo.md?dir=2026%2F03")
+	findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md")
+	findAnchor(t, html, "href", "/view/2026/03/20260330_9198.md")
+	if strings.Contains(html, "?dir=") {
+		t.Errorf("internal links should not contain ?dir= query parameter:\n%s", html)
+	}
 }

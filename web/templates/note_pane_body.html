@@ -34,7 +34,7 @@
       {{ if .Description }}<p class="text-[15px] text-gray-500 mt-0 mb-3">{{ .Description }}</p>{{ end }}
       {{ if .Tags }}
       <ul class="flex flex-wrap gap-1.5 m-0 p-0 list-none">
-        {{ range .Tags }}<li class="inline-flex items-center bg-blue-100 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed hover:bg-blue-200">{{ . }}</li>{{ end }}
+        {{ range .Tags }}<li><a href="/tags/{{ urlquery . }}" hx-get="/tags/{{ urlquery . }}" hx-target="#sidebar" hx-swap="innerHTML" onclick="setSidebarTag('{{ . }}')" class="inline-flex items-center bg-blue-100 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed no-underline cursor-pointer hover:bg-blue-200">{{ . }}</a></li>{{ end }}
       </ul>
       {{ end }}
     </div>

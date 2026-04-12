@@ -7,7 +7,7 @@ import (
 
 func TestFrontmatterMissing(t *testing.T) {
 	r := NewRenderer(nil)
-	html, fm, err := r.Render([]byte("# Hello\n\nSome text."), "", "")
+	html, fm, err := r.Render([]byte("# Hello\n\nSome text."), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestFrontmatterMissing(t *testing.T) {
 
 func TestFrontmatterEmpty(t *testing.T) {
 	r := NewRenderer(nil)
-	html, fm, err := r.Render([]byte("---\n---\n# Hello"), "", "")
+	html, fm, err := r.Render([]byte("---\n---\n# Hello"), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestFrontmatterEmpty(t *testing.T) {
 
 func TestFrontmatterTitleOnly(t *testing.T) {
 	r := NewRenderer(nil)
-	_, fm, err := r.Render([]byte("---\ntitle: My Note\n---\nBody."), "", "")
+	_, fm, err := r.Render([]byte("---\ntitle: My Note\n---\nBody."), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestFrontmatterTitleOnly(t *testing.T) {
 
 func TestFrontmatterTagsOnly(t *testing.T) {
 	r := NewRenderer(nil)
-	_, fm, err := r.Render([]byte("---\ntags:\n  - go\n  - testing\n---\nBody."), "", "")
+	_, fm, err := r.Render([]byte("---\ntags:\n  - go\n  - testing\n---\nBody."), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestFrontmatterTagsOnly(t *testing.T) {
 func TestFrontmatterAllFields(t *testing.T) {
 	r := NewRenderer(nil)
 	input := "---\ntitle: Full\ndescription: A note\nslug: full-note\ntags:\n  - a\n  - b\n---\nBody."
-	_, fm, err := r.Render([]byte(input), "", "")
+	_, fm, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestFrontmatterMalformedYAML(t *testing.T) {
 	r := NewRenderer(nil)
 	// Scalar value instead of a mapping — goldmark-meta returns nil
 	// because it expects a YAML map.
-	_, fm, err := r.Render([]byte("---\njust a string\n---\nBody."), "", "")
+	_, fm, err := r.Render([]byte("---\njust a string\n---\nBody."), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestFrontmatterUnknownKeys(t *testing.T) {
 	r := NewRenderer(nil)
 	// Valid YAML mapping but with keys we don't recognize — fm is
 	// non-nil but all known fields should be zero-valued.
-	_, fm, err := r.Render([]byte("---\nauthor: Jane\nrating: 5\n---\nBody."), "", "")
+	_, fm, err := r.Render([]byte("---\nauthor: Jane\nrating: 5\n---\nBody."), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestFrontmatterWrongTypes(t *testing.T) {
 	r := NewRenderer(nil)
 	// title is a list, tags is a string — wrong types for our mapping.
 	input := "---\ntitle:\n  - not\n  - a string\ntags: just-a-string\n---\nBody."
-	_, fm, err := r.Render([]byte(input), "", "")
+	_, fm, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestFrontmatterWrongTypes(t *testing.T) {
 
 func TestEmptyDocument(t *testing.T) {
 	r := NewRenderer(nil)
-	html, fm, err := r.Render([]byte(""), "", "")
+	html, fm, err := r.Render([]byte(""), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestEmptyDocument(t *testing.T) {
 func TestStripRedundantTitleExact(t *testing.T) {
 	r := NewRenderer(nil)
 	input := "---\ntitle: Hello World\n---\n# Hello World\n\nBody text."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestStripRedundantTitleHTMLEntities(t *testing.T) {
 	// Goldmark renders "A & B" in a heading as "A &amp; B".
 	// stripRedundantTitle should decode entities before comparing.
 	input := "---\ntitle: A & B\n---\n# A & B\n\nBody."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestStripRedundantTitleInlineMarkup(t *testing.T) {
 	// "# **Bold** title" renders as <h1><strong>Bold</strong> title</h1>.
 	// After stripping inner tags, the plain text is "Bold title".
 	input := "---\ntitle: Bold title\n---\n# **Bold** title\n\nBody."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestStripRedundantTitleMismatch(t *testing.T) {
 	r := NewRenderer(nil)
 	// When the h1 content doesn't match the frontmatter title, keep it.
 	input := "---\ntitle: Actual Title\n---\n# Different Heading\n\nBody."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestStripRedundantTitleNoH1(t *testing.T) {
 	r := NewRenderer(nil)
 	// Document with a title in frontmatter but no h1 in the body.
 	input := "---\ntitle: My Title\n---\n## Subtitle\n\nBody."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestStripRedundantTitleNoFrontmatterTitle(t *testing.T) {
 	r := NewRenderer(nil)
 	// Frontmatter exists but has no title — h1 should be preserved.
 	input := "---\ntags:\n  - go\n---\n# Keep This\n\nBody."
-	html, _, err := r.Render([]byte(input), "", "")
+	html, _, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

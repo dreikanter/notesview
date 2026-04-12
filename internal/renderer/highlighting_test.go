@@ -8,7 +8,7 @@ import (
 func TestRenderFencedCodeBlockEmitsLanguageClass(t *testing.T) {
 	r := NewRenderer(nil)
 	src := []byte("```go\nfunc foo() {}\n```\n")
-	out, _, err := r.Render(src, "", "")
+	out, _, err := r.Render(src, "")
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestRenderFencedCodeBlockEmitsLanguageClass(t *testing.T) {
 func TestRenderFencedCodeBlockWithoutLanguage(t *testing.T) {
 	r := NewRenderer(nil)
 	src := []byte("```\nplain text\n```\n")
-	out, _, err := r.Render(src, "", "")
+	out, _, err := r.Render(src, "")
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestRenderFencedCodeBlockWithoutLanguage(t *testing.T) {
 func TestRenderEscapesRawHTML(t *testing.T) {
 	r := NewRenderer(nil)
 	src := []byte("Hello\n\n<script>alert('xss')</script>\n")
-	out, _, err := r.Render(src, "", "")
+	out, _, err := r.Render(src, "")
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestRenderEscapesRawHTML(t *testing.T) {
 func TestStripRedundantTitleHandlesEntities(t *testing.T) {
 	r := NewRenderer(nil)
 	src := []byte("---\ntitle: A & B\n---\n# A & B\n\nbody\n")
-	out, fm, err := r.Render(src, "", "")
+	out, fm, err := r.Render(src, "")
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

@@ -55,17 +55,12 @@ func NewRenderer(idx *index.Index) *Renderer {
 
 // Render converts markdown to HTML. currentDir is the note's parent
 // directory relative to the notes root (used to resolve `[text](./rel.md)`).
-// dirQuery is appended verbatim to every internal /view/... href emitted
-// by the goldmark extension, so the caller can thread the current
-// sidebar directory through wiki-link navigation. Pass "" when there
-// is no panel state to preserve.
-func (r *Renderer) Render(source []byte, currentDir, dirQuery string) (string, *Frontmatter, error) {
+func (r *Renderer) Render(source []byte, currentDir string) (string, *Frontmatter, error) {
 	ctx := parser.NewContext()
 	if r.index != nil {
 		ctx.Set(noteLinkStateKey, &noteLinkState{
 			idx:        r.index,
 			currentDir: currentDir,
-			dirQuery:   dirQuery,
 		})
 	}
 
