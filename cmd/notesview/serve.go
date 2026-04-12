@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/dreikanter/notesview/internal/logging"
 	"github.com/dreikanter/notesview/internal/server"
@@ -114,7 +119,27 @@ func runServe(cmd *cobra.Command, args []string) error {
 		openBrowser(target)
 	}
 
-	return http.Serve(listener, srv.Routes())
+	httpServer := &http.Server{Handler: srv.Routes()}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		logger.Info("shutting down")
+		srv.Shutdown()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(ctx); err != nil {
+			logger.Warn("http server shutdown error", "err", err)
+		}
+	}()
+
+	if err := httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func resolvePath(p string) (root, initialFile string, err error) {

@@ -92,3 +92,9 @@ func rejectDirtyPaths(next http.Handler) http.Handler {
 func (s *Server) StartWatcher() error {
 	return s.sseHub.Start()
 }
+
+// Shutdown stops the SSE hub, closing the fsnotify watcher and draining
+// connected clients.
+func (s *Server) Shutdown() {
+	s.sseHub.Stop()
+}

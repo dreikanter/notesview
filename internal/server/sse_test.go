@@ -44,6 +44,23 @@ func TestSSEConnection(t *testing.T) {
 	}
 }
 
+func TestServerShutdownStopsHub(t *testing.T) {
+	dir := t.TempDir()
+	hub := NewSSEHub(dir, nil, nil)
+	hub.Start()
+
+	srv := &Server{root: dir, sseHub: hub}
+	srv.Shutdown()
+
+	// After Shutdown, the done channel should be closed.
+	select {
+	case <-hub.done:
+		// expected
+	default:
+		t.Fatal("expected hub.done to be closed after Shutdown")
+	}
+}
+
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
 	hub := NewSSEHub(dir, nil, nil)
