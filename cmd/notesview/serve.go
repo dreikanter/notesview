@@ -42,9 +42,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	if port == 0 && !cmd.Flags().Changed("port") {
 		if v := os.Getenv("NOTESVIEW_PORT"); v != "" {
-			if p, err := strconv.Atoi(v); err == nil {
-				port = p
+			p, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("invalid NOTESVIEW_PORT %q: %w", v, err)
 			}
+			if p < 0 || p > 65535 {
+				return fmt.Errorf("NOTESVIEW_PORT %d out of range 0..65535", p)
+			}
+			port = p
 		}
 	}
 	open, _ := cmd.Flags().GetBool("open")
