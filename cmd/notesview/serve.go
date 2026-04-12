@@ -148,15 +148,8 @@ func expandTilde(p string) string {
 }
 
 func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
+	cmd := browserCommand(runtime.GOOS, url)
+	if cmd == nil {
 		return
 	}
 	if err := cmd.Start(); err != nil {
@@ -164,4 +157,17 @@ func openBrowser(url string) {
 		return
 	}
 	go cmd.Wait()
+}
+
+func browserCommand(goos, url string) *exec.Cmd {
+	switch goos {
+	case "darwin":
+		return exec.Command("open", url)
+	case "linux":
+		return exec.Command("xdg-open", url)
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		return nil
+	}
 }
