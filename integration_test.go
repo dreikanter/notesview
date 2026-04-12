@@ -62,19 +62,30 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Errorf("view: expected markdown-body wrapper in HTML")
 	}
 
-	// Test: standalone index page at /?index=dir&path=
-	resp, err = http.Get(ts.URL + "/?index=dir&path=")
+	// Test: /view/README.md?dir=2026 renders a two-pane view with the
+	// sidebar showing 2026/. Dir entries in the sidebar preserve the
+	// note (README.md) and advance the dir.
+	resp, err = http.Get(ts.URL + "/view/README.md?dir=2026")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("index: status = %d", resp.StatusCode)
+		viewErrBody, _ := io.ReadAll(resp.Body)
+		t.Errorf("/view/README.md?dir=2026: status = %d, body: %s", resp.StatusCode, viewErrBody)
 	}
-	indexBody, _ := io.ReadAll(resp.Body)
-	// File entries on the standalone page open /view/<file>?index=dir&path=<current>.
-	if !strings.Contains(string(indexBody), `href="/view/README.md?index=dir`) {
-		t.Errorf("index: expected README link in body, got: %s", indexBody)
+	viewBody, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sidebar region must be present.
+	if !strings.Contains(string(viewBody), `id="sidebar"`) {
+		t.Errorf("expected #sidebar in response")
+	}
+	// The 2026/ dir contains only 03/. Its entry must link to
+	// /view/README.md?dir=2026%2F03 (note preserved, dir advanced).
+	if !strings.Contains(string(viewBody), `href="/view/README.md?dir=2026%2F03"`) {
+		t.Errorf("expected 03/ dir entry preserving README.md, got: %s", viewBody)
 	}
 
 	// Test: raw endpoint
