@@ -4,10 +4,10 @@
 
 ### Added
 
-- Build-time version injection via `-ldflags` ([#N])
-- `--version` flag for the CLI ([#N])
-- CHANGELOG.md to track changes between releases ([#N])
-- GitHub Action to auto-tag on PR merge ([#N])
+- Build-time version injection via `-ldflags` ([#51])
+- `--version` flag for the CLI ([#51])
+- CHANGELOG.md to track changes between releases ([#51])
+- GitHub Action to auto-tag on PR merge ([#51])
 
 [0.1.0]: https://github.com/dreikanter/notes-view/releases/tag/v0.1.0
-[#N]: https://github.com/dreikanter/notes-view/pull/N
+[#51]: https://github.com/dreikanter/notes-view/pull/51
