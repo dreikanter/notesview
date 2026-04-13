@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreikanter/notesview/internal/logging"
+	"github.com/dreikanter/notes-view/internal/logging"
 )
 
 var uidPattern = regexp.MustCompile(`^(\d{8}_\d+)`)

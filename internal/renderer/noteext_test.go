@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 // TestWikiLinkResolved verifies that [[UID]] syntax produces a link

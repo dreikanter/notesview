@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreikanter/notesview/internal/logging"
+	"github.com/dreikanter/notes-view/internal/logging"
 )
 
 // TagIndex maps tag names to the relative paths of notes that carry them.

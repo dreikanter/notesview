@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "dev"
+var Version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:           "notesview",
@@ -18,12 +18,12 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	if version == "dev" {
+	if Version == "dev" {
 		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
-			version = info.Main.Version
+			Version = info.Main.Version
 		}
 	}
-	rootCmd.Version = version
+	rootCmd.Version = Version
 }
 
 func main() {

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreikanter/notesview/internal/index"
-	"github.com/dreikanter/notesview/internal/logging"
+	"github.com/dreikanter/notes-view/internal/index"
+	"github.com/dreikanter/notes-view/internal/logging"
 	"github.com/fsnotify/fsnotify"
 )
 

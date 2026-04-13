@@ -433,7 +433,7 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 ```
 
@@ -853,7 +853,7 @@ Expected: everything builds from scratch, no errors, `bin/notesview` exists.
 - [ ] **Step 2: Simulate `go install` from a clean state**
 
 ```bash
-(cd "$(mktemp -d)" && GOBIN="$PWD" go install github.com/dreikanter/notesview/cmd/notesview@none 2>&1 | head -5)
+(cd "$(mktemp -d)" && GOBIN="$PWD" go install github.com/dreikanter/notes-view/cmd/notesview@none 2>&1 | head -5)
 ```
 
 Expected: the `go install` command may refuse `@none` — that's fine; the point is just to sanity-check that `go build` inside the module source (which is what `go install` does under the hood) does not require Node. A more direct check:
