@@ -65,7 +65,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 func setupTestIndex(t *testing.T) *index.Index {
@@ -251,7 +251,7 @@ import (
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 // noteLinkStateKey identifies per-request state stored in parser.Context.
@@ -529,7 +529,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 var leadingH1 = regexp.MustCompile(`(?s)^\s*<h1[^>]*>\s*(.*?)\s*</h1>`)
@@ -807,8 +807,8 @@ import (
 	"html/template"
 	"io"
 
-	"github.com/dreikanter/notesview/internal/renderer"
-	"github.com/dreikanter/notesview/web"
+	"github.com/dreikanter/notes-view/internal/renderer"
+	"github.com/dreikanter/notes-view/web"
 )
 
 type Crumb struct {

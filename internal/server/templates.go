@@ -5,8 +5,8 @@ import (
 	"html/template"
 	"io"
 
-	"github.com/dreikanter/notesview/internal/renderer"
-	"github.com/dreikanter/notesview/web"
+	"github.com/dreikanter/notes-view/internal/renderer"
+	"github.com/dreikanter/notes-view/web"
 )
 
 type IndexEntry struct {

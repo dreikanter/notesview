@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notesview/internal/renderer"
+	"github.com/dreikanter/notes-view/internal/renderer"
 )
 
 func TestLoadTemplates(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 // leadingH1 matches the first <h1>…</h1> at the start of the document,

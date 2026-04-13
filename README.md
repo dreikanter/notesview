@@ -13,7 +13,7 @@ A local web server for browsing and previewing markdown notes with live reload.
 ## Installation
 
 ```sh
-go install github.com/dreikanter/notesview/cmd/notesview@latest
+go install github.com/dreikanter/notes-view/cmd/notesview@latest
 ```
 
 ## Usage

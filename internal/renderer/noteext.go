@@ -17,7 +17,7 @@ import (
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 
-	"github.com/dreikanter/notesview/internal/index"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 // wikiLinkParser is a goldmark InlineParser that recognizes [[UID]]

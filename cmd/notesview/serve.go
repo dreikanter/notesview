@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dreikanter/notesview/internal/logging"
-	"github.com/dreikanter/notesview/internal/server"
+	"github.com/dreikanter/notes-view/internal/logging"
+	"github.com/dreikanter/notes-view/internal/server"
 	"github.com/spf13/cobra"
 )
 

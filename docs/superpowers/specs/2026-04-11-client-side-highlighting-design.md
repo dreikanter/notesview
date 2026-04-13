@@ -6,7 +6,7 @@
 
 - Code blocks render with readable, contrasted colors on the light background.
 - Highlighting complexity leaves the Go server; server emits plain `<pre><code class="language-xxx">` markup.
-- `go install github.com/dreikanter/notesview/cmd/notesview@latest` continues to work (no change to the install story).
+- `go install github.com/dreikanter/notes-view/cmd/notesview@latest` continues to work (no change to the install story).
 - Tool remains fully offline-capable — nothing is fetched at runtime.
 
 ## Non-Goals
@@ -133,7 +133,7 @@ web/
 
 ## Install and distribution
 
-Unchanged. `web/static/app.js`, `web/static/style.css`, `web/static/index.html` are committed to the repository. `go install github.com/dreikanter/notesview/cmd/notesview@latest` continues to work because `go:embed static/*` finds the files in the fetched module source. The tradeoff — minified blobs churn in git history — is the same tradeoff the project accepts today for the Tailwind-built `style.css`.
+Unchanged. `web/static/app.js`, `web/static/style.css`, `web/static/index.html` are committed to the repository. `go install github.com/dreikanter/notes-view/cmd/notesview@latest` continues to work because `go:embed static/*` finds the files in the fetched module source. The tradeoff — minified blobs churn in git history — is the same tradeoff the project accepts today for the Tailwind-built `style.css`.
 
 ## Migration order
 

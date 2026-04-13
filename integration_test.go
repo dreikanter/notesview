@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notesview/internal/server"
+	"github.com/dreikanter/notes-view/internal/server"
 )
 
 func TestIntegrationSmoke(t *testing.T) {
