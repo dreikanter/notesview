@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -677,3 +678,82 @@ func TestIsUID(t *testing.T) {
 		})
 	}
 }
+
+// TestRebuildDoneReflectsLatestState pins that reading the channel
+// returned from Rebuild guarantees a Build has completed against the
+// tree state at or after the Rebuild call. Without this guarantee the
+// SSE broadcast at sse.go could fire before the index catches up,
+// causing handleView to read stale metadata.
+func TestRebuildDoneReflectsLatestState(t *testing.T) {
+	dir := t.TempDir()
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("initial Build: %v", err)
+	}
+
+	mustWriteFile(t, filepath.Join(dir, "fresh.md"),
+		"---\ntitle: Fresh\n---\n")
+
+	if _, ok := idx.NoteEntryByRel("fresh.md"); ok {
+		t.Fatal("fresh.md should not be indexed before Rebuild")
+	}
+
+	<-idx.Rebuild()
+
+	entry, ok := idx.NoteEntryByRel("fresh.md")
+	if !ok {
+		t.Fatal("fresh.md should be indexed after Rebuild done fires")
+	}
+	if entry.Title != "Fresh" {
+		t.Errorf("Title = %q, want Fresh", entry.Title)
+	}
+}
+
+// TestRebuildCoalescesRequestsDuringInflight pins the scheduling rule:
+// while a build is in-flight, all new Rebuild callers share a single
+// queued follow-up. Verified by observing that the request arriving
+// after a write is reflected by the time the returned channel closes.
+func TestRebuildCoalescesRequestsDuringInflight(t *testing.T) {
+	dir := t.TempDir()
+	// Prime the tree with enough files that Build takes measurable time.
+	for i := 0; i < 200; i++ {
+		mustWriteFile(t, filepath.Join(dir, "n"+strconv.Itoa(i)+".md"),
+			"---\ntitle: T\n---\n")
+	}
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("initial Build: %v", err)
+	}
+
+	// Kick off a build, then — without waiting — add a new file and
+	// request another rebuild. The second call must return a channel
+	// that reflects the new file, not the prior in-flight build.
+	first := idx.Rebuild()
+
+	mustWriteFile(t, filepath.Join(dir, "late.md"),
+		"---\ntitle: Late\n---\n")
+
+	second := idx.Rebuild()
+
+	// Second must not close before first (queue ordering).
+	select {
+	case <-second:
+		// If this ever fires before first, the queued build was elided.
+		select {
+		case <-first:
+			// Both closed at roughly the same time — acceptable if
+			// first finished between the two reads.
+		default:
+			t.Fatal("second done closed before in-flight build finished")
+		}
+	case <-first:
+	}
+
+	<-second
+
+	if _, ok := idx.NoteEntryByRel("late.md"); !ok {
+		t.Error("late.md must be indexed once second Rebuild's done fires")
+	}
+}
+

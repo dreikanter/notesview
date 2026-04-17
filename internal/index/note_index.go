@@ -47,15 +47,21 @@ type NoteEntry struct {
 // for concurrent use. Build performs a single filepath.WalkDir, parses
 // frontmatter once per file, and swaps all state in atomically.
 type NoteIndex struct {
-	root     string
-	logger   *slog.Logger
-	mu       sync.RWMutex
-	entries  []NoteEntry
-	byUID    map[string]string
-	byRel    map[string]int
-	byTag    map[string][]string
-	allTags  []string
-	building sync.Mutex
+	root    string
+	logger  *slog.Logger
+	mu      sync.RWMutex
+	entries []NoteEntry
+	byUID   map[string]string
+	byRel   map[string]int
+	byTag   map[string][]string
+	allTags []string
+
+	// buildMu guards curDone and queuedDone — the rebuild state machine.
+	// Separate from mu so Rebuild bookkeeping does not contend with read
+	// lookups. See Rebuild for the scheduling semantics.
+	buildMu    sync.Mutex
+	curDone    chan struct{} // in-flight build's completion signal; nil when idle
+	queuedDone chan struct{} // follow-up build queued while curDone runs; nil when none
 }
 
 // New creates a NoteIndex rooted at root. A nil logger is replaced with
@@ -169,18 +175,60 @@ func (i *NoteIndex) Build() error {
 	return nil
 }
 
-// Rebuild triggers a background index build, coalescing concurrent calls.
-// If a build is already in progress, the call returns immediately.
-func (i *NoteIndex) Rebuild() {
-	if !i.building.TryLock() {
-		return
+// Rebuild requests an index rebuild and returns a channel that closes
+// when a build has completed that reflects the tree state at or after
+// this call.
+//
+// Scheduling rules:
+//   - Idle: start a new build immediately.
+//   - Build in-flight: coalesce — queue at most one follow-up. Every
+//     caller that arrives while the in-flight build runs receives the
+//     same follow-up's done channel, so they only observe completion
+//     after a full walk that started after their request.
+//
+// Waiters that only need "the current build" can read the returned
+// channel; callers that do not care (e.g. warmup on a navigation) may
+// ignore it.
+func (i *NoteIndex) Rebuild() <-chan struct{} {
+	i.buildMu.Lock()
+	if i.curDone == nil {
+		done := make(chan struct{})
+		i.curDone = done
+		i.buildMu.Unlock()
+		go i.runBuild(done)
+		return done
 	}
-	go func() {
-		defer i.building.Unlock()
-		if err := i.Build(); err != nil {
-			i.logger.Error("note index rebuild failed", "err", err)
-		}
-	}()
+	if i.queuedDone == nil {
+		i.queuedDone = make(chan struct{})
+	}
+	done := i.queuedDone
+	i.buildMu.Unlock()
+	return done
+}
+
+// runBuild executes one Build and signals done; if another Rebuild
+// request arrived during the build, it chains into the follow-up build
+// in the same goroutine lineage.
+func (i *NoteIndex) runBuild(done chan struct{}) {
+	if err := i.Build(); err != nil {
+		i.logger.Error("note index rebuild failed", "err", err)
+	}
+
+	i.buildMu.Lock()
+	next := i.queuedDone
+	i.queuedDone = nil
+	if next != nil {
+		i.curDone = next
+	} else {
+		i.curDone = nil
+	}
+	i.buildMu.Unlock()
+
+	close(done)
+
+	if next != nil {
+		go i.runBuild(next)
+	}
 }
 
 // NoteByUID returns the forward-slash rel-path for a UID and a boolean

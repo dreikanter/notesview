@@ -87,15 +87,18 @@ func (h *SSEHub) eventLoop() {
 				continue
 			}
 			// Content (frontmatter) and filenames (UIDs) can both
-			// change on Write or Create — rebuild once either way.
-			if h.index != nil {
-				h.index.Rebuild()
-			}
+			// change on Write or Create. The rebuild is scheduled
+			// inside the debounce timer below so the broadcast only
+			// fires after a build that reflects this event — clients
+			// that re-fetch on `change` always see fresh metadata.
 			p := event.Name
 			if t, ok := timers[p]; ok {
 				t.Stop()
 			}
 			timers[p] = time.AfterFunc(100*time.Millisecond, func() {
+				if h.index != nil {
+					<-h.index.Rebuild()
+				}
 				h.broadcast(p)
 			})
 		case err, ok := <-h.watcher.Errors:
