@@ -13,9 +13,9 @@ import (
 	"github.com/dreikanter/notes-view/internal/logging"
 )
 
-var uidPattern = regexp.MustCompile(`^(\d{8}_\d+)`)
+var uidPattern = regexp.MustCompile(`^(\d{5,}_\d+)`)
 
-var fullUIDPattern = regexp.MustCompile(`^\d{8}_\d+$`)
+var fullUIDPattern = regexp.MustCompile(`^\d{5,}_\d+$`)
 
 func IsUID(s string) bool {
 	return fullUIDPattern.MatchString(s)

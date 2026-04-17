@@ -109,11 +109,19 @@ func TestIsUID(t *testing.T) {
 		s    string
 		want bool
 	}{
+		// Classic 4-digit year
 		{"20260331_9201", true},
 		{"20261231_0001", true},
-		{"2026031_9201", false},
+		// Variable-width year (5+ digits before "_")
+		{"12026_0001", true}, // 1-digit year ("1"), month 20, day 26 — still valid as UID pattern
+		{"12345_0001", true}, // 1-digit year, month 23, day 45 — UID pattern only, date validity checked elsewhere
+		// Too few digits before "_"
+		{"2026_0001", false}, // only 4 digits
+		{"1234_0001", false},
+		// Missing or malformed suffix
 		{"20260331_", false},
 		{"20260331_abc", false},
+		// Not a UID shape at all
 		{"hello_world", false},
 		{"202603319201", false},
 	}
