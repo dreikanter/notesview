@@ -118,6 +118,51 @@ func TestLogRequestsDemotesStaticAssets(t *testing.T) {
 	}
 }
 
+// TestSetHXCacheHeadersTopLevel verifies a plain top-level GET gets
+// Vary: HX-Request, HX-Target so a URL-keyed cache won't later serve
+// this full-page response as a partial (or vice versa). No-store
+// should NOT be set on top-level responses — they're genuinely
+// cacheable.
+func TestSetHXCacheHeadersTopLevel(t *testing.T) {
+	handler := setHXCacheHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/view/foo.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if got := w.Header().Get("Vary"); got != "HX-Request, HX-Target" {
+		t.Errorf("Vary = %q, want %q", got, "HX-Request, HX-Target")
+	}
+	if got := w.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control on top-level = %q, want empty", got)
+	}
+}
+
+// TestSetHXCacheHeadersPartial verifies an HTMX partial response
+// carries both Vary and Cache-Control: no-store, so it stays out of
+// the HTTP cache AND out of Firefox's session store (which replays
+// bodies on tab restore without honoring Vary).
+func TestSetHXCacheHeadersPartial(t *testing.T) {
+	handler := setHXCacheHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/view/foo.md", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if got := w.Header().Get("Vary"); got != "HX-Request, HX-Target" {
+		t.Errorf("Vary = %q, want %q", got, "HX-Request, HX-Target")
+	}
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}
+
 func TestLogResponseWriterFlushPassesThrough(t *testing.T) {
 	// The wrapped writer must still expose http.Flusher so SSE keeps
 	// working. httptest.NewRecorder implements Flusher, so we can assert
