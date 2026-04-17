@@ -71,7 +71,9 @@ and `NOTESVIEW_LOG_*` environment variables are honoured.
 Build requirements (Wails v2 uses the OS webview via cgo):
 
 - **Linux:** `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` (or `-4.0-dev`)
-- **macOS:** Xcode Command Line Tools
+- **macOS:** Xcode Command Line Tools. The `make` target passes
+  `CGO_LDFLAGS="-framework UniformTypeIdentifiers -mmacosx-version-min=10.13"`
+  automatically; include the same flag if invoking `go build` by hand.
 - **Windows:** the [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
 
 For proper app bundles (macOS `.app`, Windows installer, icons, signing)
