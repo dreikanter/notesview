@@ -90,10 +90,22 @@ html.sidebar-open #note-pane {
   content: none;
 }
 
+/*
+ * The typography plugin defaults `--tw-prose-pre-bg` to slate-800 (dark)
+ * and `--tw-prose-pre-code` to slate-200 (light), while highlight.js's
+ * github.css theme paints `<code class="hljs">` on a white background.
+ * Override both tokens so the <pre> chrome stays flush with the hljs
+ * block inside it regardless of whether a given fence was highlighted.
+ */
+.markdown-body {
+  --tw-prose-pre-bg: #ffffff;
+  --tw-prose-pre-code: #24292e;
+}
+
 @layer components {
   .markdown-body pre {
-    @apply bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto
-           mb-4 text-[85%] leading-snug text-gray-900;
+    @apply border border-gray-200 rounded-md p-4 overflow-auto
+           mb-4 text-[85%] leading-snug;
   }
 
   .markdown-body code {
