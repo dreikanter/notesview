@@ -100,11 +100,22 @@ func (i *NoteIndex) Build() error {
 
 		tags := dedupStrings(fm.Tags)
 
+		var info os.FileInfo
+		if fi, ierr := d.Info(); ierr == nil {
+			info = fi
+		}
+		date, source := resolveDate(uid, fm.Date, info)
+
 		entry := NoteEntry{
-			RelPath: rel,
-			UID:     uid,
-			Stem:    stem,
-			Tags:    tags,
+			RelPath:    rel,
+			UID:        uid,
+			Stem:       stem,
+			Slug:       deriveSlug(stem, uid, fm.Slug),
+			Title:      fm.Title,
+			Tags:       tags,
+			Aliases:    append([]string(nil), fm.Aliases...),
+			Date:       date,
+			DateSource: source,
 		}
 		entries = append(entries, entry)
 
@@ -180,6 +191,123 @@ func (i *NoteIndex) NotesByTag(tag string) []string {
 	copy(out, paths)
 	return out
 }
+
+// deriveSlug returns the normalized slug for an entry. If the frontmatter
+// supplies one, normalize it. Otherwise derive from the stem: strip the
+// UID + trailing "_" prefix if present, then normalize. An empty residue
+// yields an empty slug. Normalization: lowercase; runs of characters that
+// are neither letters nor digits become a single "-"; trim leading and
+// trailing "-".
+func deriveSlug(stem, uid, frontmatterSlug string) string {
+	raw := frontmatterSlug
+	if raw == "" {
+		residue := stem
+		if uid != "" && strings.HasPrefix(residue, uid) {
+			residue = strings.TrimPrefix(residue, uid)
+			residue = strings.TrimPrefix(residue, "_")
+		}
+		raw = residue
+	}
+	if raw == "" {
+		return ""
+	}
+	return normalizeSlug(raw)
+}
+
+func normalizeSlug(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	lastDash := false
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r + ('a' - 'A'))
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := b.String()
+	return strings.TrimRight(out, "-")
+}
+
+// resolveDate returns (Date, DateSource) per the spec priority: UID date,
+// then frontmatter date, then file mtime. stat may be nil in tests; if
+// all branches fail, returns a zero Date and empty DateSource.
+func resolveDate(uid string, fmDate time.Time, info os.FileInfo) (time.Time, string) {
+	if d, ok := uidDate(uid); ok {
+		return d, "uid"
+	}
+	if !fmDate.IsZero() {
+		return fmDate, "frontmatter"
+	}
+	if info != nil {
+		return info.ModTime(), "mtime"
+	}
+	return time.Time{}, ""
+}
+
+// uidDate parses the UID's leading digit run as [Y…][MM][DD]. Returns
+// (time.Time{}, false) if the digit run is shorter than 5 or the
+// resulting date is not real (e.g., month 13, Feb 30).
+func uidDate(uid string) (time.Time, bool) {
+	if uid == "" {
+		return time.Time{}, false
+	}
+	underscore := strings.IndexByte(uid, '_')
+	if underscore < 5 {
+		return time.Time{}, false
+	}
+	head := uid[:underscore]
+	yearLen := len(head) - 4
+	if yearLen < 1 {
+		return time.Time{}, false
+	}
+	y, err := parseIntASCII(head[:yearLen])
+	if err != nil {
+		return time.Time{}, false
+	}
+	m, err := parseIntASCII(head[yearLen : yearLen+2])
+	if err != nil {
+		return time.Time{}, false
+	}
+	d, err := parseIntASCII(head[yearLen+2:])
+	if err != nil {
+		return time.Time{}, false
+	}
+	// Reject out-of-range dates. time.Date normalizes silently, so we
+	// build then verify the fields round-trip.
+	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
+	if t.Year() != y || int(t.Month()) != m || t.Day() != d {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+func parseIntASCII(s string) (int, error) {
+	if s == "" {
+		return 0, errEmptyInt
+	}
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, errNonDigit
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
+}
+
+var (
+	errEmptyInt = errors.New("empty int")
+	errNonDigit = errors.New("non-digit in int")
+)
 
 // dedupStrings returns s with duplicates removed, preserving first-seen
 // order. A nil or empty input returns nil.

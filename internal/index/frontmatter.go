@@ -22,6 +22,7 @@ func isFenceLine(line string) bool {
 // private: extending it with new fields is a local change.
 type frontmatter struct {
 	Title   string    `yaml:"title"`
+	Slug    string    `yaml:"slug"`
 	Tags    []string  `yaml:"tags"`
 	Aliases []string  `yaml:"aliases"`
 	Date    time.Time `yaml:"date"`

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupNoteIndexDir(t *testing.T) string {
@@ -346,5 +347,169 @@ func TestNoteIndexNotesByTagSortedRelPaths(t *testing.T) {
 	notes := idx.NotesByTag("t")
 	if len(notes) != 2 || notes[0] != "a/note.md" || notes[1] != "b/note.md" {
 		t.Errorf("NotesByTag(t) = %v, want [a/note.md b/note.md]", notes)
+	}
+}
+
+// entryByRel is a test helper that returns the entry at rel, or fails the
+// test. Reads unexported state — tests run in package index.
+func entryByRel(t *testing.T, idx *NoteIndex, rel string) NoteEntry {
+	t.Helper()
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	for _, e := range idx.entries {
+		if e.RelPath == rel {
+			return e
+		}
+	}
+	t.Fatalf("no entry with RelPath %q; have %d entries", rel, len(idx.entries))
+	return NoteEntry{}
+}
+
+func TestNoteEntryTitle(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "a.md"), "---\ntitle: Hello World\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "b.md"), "# No frontmatter\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := entryByRel(t, idx, "a.md").Title; got != "Hello World" {
+		t.Errorf("Title = %q, want Hello World", got)
+	}
+	if got := entryByRel(t, idx, "b.md").Title; got != "" {
+		t.Errorf("Title = %q, want empty", got)
+	}
+}
+
+func TestNoteEntryAliases(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "inline.md"),
+		"---\naliases: [k8s, kube]\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "block.md"),
+		"---\naliases:\n  - one\n  - two\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := entryByRel(t, idx, "inline.md").Aliases
+	if len(got) != 2 || got[0] != "k8s" || got[1] != "kube" {
+		t.Errorf("inline Aliases = %v", got)
+	}
+	got = entryByRel(t, idx, "block.md").Aliases
+	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Errorf("block Aliases = %v", got)
+	}
+}
+
+func TestNoteEntrySlugFromFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "a.md"),
+		"---\nslug: My Awesome_Note\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := entryByRel(t, idx, "a.md").Slug; got != "my-awesome-note" {
+		t.Errorf("Slug = %q, want my-awesome-note", got)
+	}
+}
+
+func TestNoteEntrySlugDerivedFromStem(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "20260331_9201_weekly_digest.md"), "# Body\n")
+	mustWriteFile(t, filepath.Join(dir, "20260331_9202.md"), "# Body\n")
+	mustWriteFile(t, filepath.Join(dir, "README.md"), "# Readme\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := entryByRel(t, idx, "20260331_9201_weekly_digest.md").Slug; got != "weekly-digest" {
+		t.Errorf("Slug = %q, want weekly-digest", got)
+	}
+	// Bare UID filename → empty slug.
+	if got := entryByRel(t, idx, "20260331_9202.md").Slug; got != "" {
+		t.Errorf("Slug = %q, want empty", got)
+	}
+	// Non-UID filename → normalized stem.
+	if got := entryByRel(t, idx, "README.md").Slug; got != "readme" {
+		t.Errorf("Slug = %q, want readme", got)
+	}
+}
+
+func TestNoteEntryDateFromUID(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "20260331_9201.md"), "---\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	e := entryByRel(t, idx, "20260331_9201.md")
+	if e.DateSource != "uid" {
+		t.Errorf("DateSource = %q, want uid", e.DateSource)
+	}
+	if e.Date.Year() != 2026 || e.Date.Month() != 3 || e.Date.Day() != 31 {
+		t.Errorf("Date = %v, want 2026-03-31", e.Date)
+	}
+}
+
+func TestNoteEntryDateFromFrontmatterWhenNoUID(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "README.md"), "---\ndate: 2020-01-02\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	e := entryByRel(t, idx, "README.md")
+	if e.DateSource != "frontmatter" {
+		t.Errorf("DateSource = %q, want frontmatter", e.DateSource)
+	}
+	if e.Date.Year() != 2020 || e.Date.Month() != 1 || e.Date.Day() != 2 {
+		t.Errorf("Date = %v, want 2020-01-02", e.Date)
+	}
+}
+
+func TestNoteEntryDateFromMtimeWhenNoUIDAndNoFrontmatterDate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plain.md")
+	mustWriteFile(t, path, "body only, no frontmatter\n")
+
+	// Stamp mtime to a known instant.
+	want := time.Date(2019, 7, 4, 12, 34, 56, 0, time.UTC)
+	if err := os.Chtimes(path, want, want); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	e := entryByRel(t, idx, "plain.md")
+	if e.DateSource != "mtime" {
+		t.Errorf("DateSource = %q, want mtime", e.DateSource)
+	}
+	if !e.Date.Equal(want) {
+		t.Errorf("Date = %v, want %v", e.Date, want)
+	}
+}
+
+func TestNoteEntryDateUIDInvalidFallsThrough(t *testing.T) {
+	// UID digits match the pattern but yield an invalid date: month=99.
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "20269931_0001.md"),
+		"---\ndate: 2021-06-06\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	e := entryByRel(t, idx, "20269931_0001.md")
+	if e.DateSource != "frontmatter" {
+		t.Errorf("DateSource = %q, want frontmatter (UID date invalid)", e.DateSource)
 	}
 }
