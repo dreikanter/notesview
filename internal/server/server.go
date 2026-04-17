@@ -18,8 +18,7 @@ type Server struct {
 	editor    string
 	logger    *slog.Logger
 	renderer  *renderer.Renderer
-	index     *index.Index
-	tagIndex  *index.TagIndex
+	index     *index.NoteIndex
 	sseHub    *SSEHub
 	templates *templateSet
 }
@@ -36,10 +35,6 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 	if err := idx.Build(); err != nil {
 		return nil, fmt.Errorf("initial index build: %w", err)
 	}
-	tagIdx := index.NewTagIndex(root, logger)
-	if err := tagIdx.Build(); err != nil {
-		return nil, fmt.Errorf("initial tag index build: %w", err)
-	}
 	tpls, err := loadTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("load templates: %w", err)
@@ -50,8 +45,7 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 		logger:    logger,
 		renderer:  renderer.NewRenderer(idx),
 		index:     idx,
-		tagIndex:  tagIdx,
-		sseHub:    NewSSEHub(root, logger, idx, tagIdx),
+		sseHub:    NewSSEHub(root, logger, idx),
 		templates: tpls,
 	}, nil
 }

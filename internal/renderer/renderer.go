@@ -31,10 +31,10 @@ type Frontmatter struct {
 
 type Renderer struct {
 	md    goldmark.Markdown
-	index *index.Index
+	index *index.NoteIndex
 }
 
-func NewRenderer(idx *index.Index) *Renderer {
+func NewRenderer(idx *index.NoteIndex) *Renderer {
 	// NOTE: html.WithUnsafe() is deliberately NOT set. Without it, goldmark
 	// escapes raw HTML from markdown sources (e.g. a malicious <script> block
 	// becomes text). This matters even for a local-only previewer because a

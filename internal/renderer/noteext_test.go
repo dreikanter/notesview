@@ -57,7 +57,7 @@ func TestWikiLinkInvalidPattern(t *testing.T) {
 	}
 }
 
-func setupTestIndex(t *testing.T) *index.Index {
+func setupTestIndex(t *testing.T) *index.NoteIndex {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755); err != nil {
@@ -70,7 +70,9 @@ func setupTestIndex(t *testing.T) *index.Index {
 		t.Fatalf("write note: %v", err)
 	}
 	idx := index.New(dir, nil)
-	idx.Build()
+	if err := idx.Build(); err != nil {
+		t.Fatalf("build: %v", err)
+	}
 	return idx
 }
 
