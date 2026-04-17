@@ -60,7 +60,7 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 		return nil
 	}
 
-	relPath, ok := state.idx.Lookup(uid)
+	relPath, ok := state.idx.NoteByUID(uid)
 	if !ok {
 		return nil
 	}
@@ -105,7 +105,7 @@ var noteLinkStateKey = parser.NewContextKey()
 // parsing. currentDir is the note's parent directory (used to resolve
 // relative .md links).
 type noteLinkState struct {
-	idx        *index.Index
+	idx        *index.NoteIndex
 	currentDir string
 }
 
@@ -170,7 +170,7 @@ func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 
 	if strings.HasPrefix(dest, "note://") {
 		uid := strings.TrimPrefix(dest, "note://")
-		if relPath, ok := s.idx.Lookup(uid); ok {
+		if relPath, ok := s.idx.NoteByUID(uid); ok {
 			n.Destination = []byte("/view/" + relPath)
 		} else {
 			n.Destination = []byte("#")
