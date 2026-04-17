@@ -31,15 +31,16 @@ func IsUID(s string) bool {
 // needed for today's lookups are populated for future derived maps
 // (bySlug, byAlias, byDate) without requiring a second walk.
 type NoteEntry struct {
-	RelPath    string
-	UID        string
-	Stem       string
-	Slug       string
-	Title      string
-	Tags       []string
-	Aliases    []string
-	Date       time.Time
-	DateSource string
+	RelPath     string
+	UID         string
+	Stem        string
+	Slug        string
+	Title       string
+	Description string
+	Tags        []string
+	Aliases     []string
+	Date        time.Time
+	DateSource  string
 }
 
 // NoteIndex is the unified in-memory index of the notes tree. It is safe
@@ -51,6 +52,7 @@ type NoteIndex struct {
 	mu       sync.RWMutex
 	entries  []NoteEntry
 	byUID    map[string]string
+	byRel    map[string]int
 	byTag    map[string][]string
 	allTags  []string
 	building sync.Mutex
@@ -66,6 +68,7 @@ func New(root string, logger *slog.Logger) *NoteIndex {
 		root:   root,
 		logger: logger,
 		byUID:  make(map[string]string),
+		byRel:  make(map[string]int),
 		byTag:  make(map[string][]string),
 	}
 }
@@ -76,6 +79,7 @@ func New(root string, logger *slog.Logger) *NoteIndex {
 func (i *NoteIndex) Build() error {
 	var entries []NoteEntry
 	byUID := make(map[string]string)
+	byRel := make(map[string]int)
 	byTag := make(map[string][]string)
 
 	err := filepath.WalkDir(i.root, func(path string, d os.DirEntry, err error) error {
@@ -120,16 +124,18 @@ func (i *NoteIndex) Build() error {
 		date, source := resolveDate(uid, fm.Date, info)
 
 		entry := NoteEntry{
-			RelPath:    rel,
-			UID:        uid,
-			Stem:       stem,
-			Slug:       deriveSlug(stem, uid, fm.Slug),
-			Title:      fm.Title,
-			Tags:       tags,
-			Aliases:    append([]string(nil), fm.Aliases...),
-			Date:       date,
-			DateSource: source,
+			RelPath:     rel,
+			UID:         uid,
+			Stem:        stem,
+			Slug:        deriveSlug(stem, uid, fm.Slug),
+			Title:       fm.Title,
+			Description: fm.Description,
+			Tags:        tags,
+			Aliases:     append([]string(nil), fm.Aliases...),
+			Date:        date,
+			DateSource:  source,
 		}
+		byRel[rel] = len(entries)
 		entries = append(entries, entry)
 
 		if uid != "" {
@@ -156,6 +162,7 @@ func (i *NoteIndex) Build() error {
 	i.mu.Lock()
 	i.entries = entries
 	i.byUID = byUID
+	i.byRel = byRel
 	i.byTag = byTag
 	i.allTags = allTags
 	i.mu.Unlock()
@@ -183,6 +190,23 @@ func (i *NoteIndex) NoteByUID(uid string) (string, bool) {
 	defer i.mu.RUnlock()
 	p, ok := i.byUID[uid]
 	return p, ok
+}
+
+// NoteEntryByRel returns the NoteEntry whose RelPath equals rel (expected
+// in forward-slash form) and a found flag. Slice fields (Tags, Aliases)
+// are defensively copied so callers cannot mutate the index's internal
+// storage — matching the convention used by Tags and NotesByTag.
+func (i *NoteIndex) NoteEntryByRel(rel string) (NoteEntry, bool) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	idx, ok := i.byRel[rel]
+	if !ok {
+		return NoteEntry{}, false
+	}
+	entry := i.entries[idx]
+	entry.Tags = append([]string(nil), entry.Tags...)
+	entry.Aliases = append([]string(nil), entry.Aliases...)
+	return entry, true
 }
 
 // Tags returns a copy of the sorted, deduplicated tag list.

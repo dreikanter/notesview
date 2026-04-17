@@ -14,7 +14,7 @@ import (
 func TestWikiLinkResolved(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[20260331_9201]] for details.`), "")
+	html, err := r.Render([]byte(`See [[20260331_9201]] for details.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestWikiLinkResolved(t *testing.T) {
 func TestWikiLinkUnresolved(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[99999999_0000]] here.`), "")
+	html, err := r.Render([]byte(`See [[99999999_0000]] here.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestWikiLinkUnresolved(t *testing.T) {
 func TestWikiLinkInvalidPattern(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [[hello_world]] here.`), "")
+	html, err := r.Render([]byte(`See [[hello_world]] here.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func setupTestIndex(t *testing.T) *index.NoteIndex {
 func TestNoteProtocolLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [my todo](note://20260331_9201) for details.`), "")
+	html, err := r.Render([]byte(`See [my todo](note://20260331_9201) for details.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestNoteProtocolLink(t *testing.T) {
 func TestBrokenNoteLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [missing](note://99999999_0000) link.`), "")
+	html, err := r.Render([]byte(`See [missing](note://99999999_0000) link.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestBrokenNoteLink(t *testing.T) {
 func TestRelativeMdLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, _, err := r.Render([]byte(`See [other](../01/foo.md) for details.`), "2026/03")
+	html, err := r.Render([]byte(`See [other](../01/foo.md) for details.`), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestExternalLinksStayPlain(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `[web](https://example.com) [mail](mailto:a@b.com) [asset](/static/foo.png)`
-	html, _, err := r.Render([]byte(input), "")
+	html, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `[xss](javascript:alert(1)) [vb](vbscript:msgbox) [f](file:///etc/passwd) [d](data:text/html,<script>alert(1)</script>)`
-	html, _, err := r.Render([]byte(input), "")
+	html, err := r.Render([]byte(input), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	}
 	// An image data URL is allowed (links may legitimately point at
 	// base64 images in rare cases).
-	html2, _, err := r.Render([]byte(`[ok](data:image/png;base64,iVBORw0K)`), "")
+	html2, err := r.Render([]byte(`[ok](data:image/png;base64,iVBORw0K)`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestInternalLinksNoDirQuery(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
 	input := `See [todo](note://20260331_9201), [rel](../03/20260330_9198.md), and [[20260331_9201]].`
-	html, _, err := r.Render([]byte(input), "2026/03")
+	html, err := r.Render([]byte(input), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}

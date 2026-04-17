@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"io"
 
-	"github.com/dreikanter/notes-view/internal/renderer"
+	"github.com/dreikanter/notes-view/internal/index"
 	"github.com/dreikanter/notes-view/web"
 )
 
@@ -34,28 +34,28 @@ type layoutFields struct {
 // ViewData is the full-page render context for a note view.
 type ViewData struct {
 	layoutFields
-	NotePath    string
-	NoteTitle   string
-	Frontmatter *renderer.Frontmatter
-	HTML        template.HTML
-	SSEWatch    string
-	ViewHref    string
-	Sidebar     SidebarPartialData
-	DirListing  *DirListingData // non-nil when main panel shows a directory listing
+	NotePath   string
+	NoteTitle  string
+	Note       *index.NoteEntry
+	HTML       template.HTML
+	SSEWatch   string
+	ViewHref   string
+	Sidebar    SidebarPartialData
+	DirListing *DirListingData // non-nil when main panel shows a directory listing
 }
 
 // NotePartialData is the render context for an HX-Target: note-pane
 // partial response. Only the fields the note-pane template needs;
 // no sidebar, no topbar.
 type NotePartialData struct {
-	NotePath    string
-	NoteTitle   string
-	Frontmatter *renderer.Frontmatter
-	HTML        template.HTML
-	SSEWatch    string
-	ViewHref    string
-	EditPath    string
-	EditHref    string
+	NotePath  string
+	NoteTitle string
+	Note      *index.NoteEntry
+	HTML      template.HTML
+	SSEWatch  string
+	ViewHref  string
+	EditPath  string
+	EditHref  string
 }
 
 // SidebarPartialData is the render context for the sidebar tree.

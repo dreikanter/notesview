@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dreikanter/notes-view/internal/index"
+	"github.com/dreikanter/notes-view/internal/renderer"
 )
 
 // buildLayoutFields assembles the common chrome every full-page render needs.
@@ -111,15 +114,21 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 
 	currentDir := noteParentDir(reqPath)
 
-	html, fm, err := s.renderer.Render(data, currentDir)
+	html, err := s.renderer.Render(data, currentDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	var note *index.NoteEntry
+	if entry, ok := s.index.NoteEntryByRel(reqPath); ok {
+		note = &entry
+	}
+
 	title := filepath.Base(reqPath)
-	if fm != nil && fm.Title != "" {
-		title = fm.Title
+	if note != nil && note.Title != "" {
+		title = note.Title
+		html = renderer.StripRedundantTitle(html, note.Title)
 	}
 	noteTitle := title
 
@@ -133,14 +142,14 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	// Note-pane partial response: return only the note body, no chrome.
 	if hxTargetedAt(r, "note-pane") {
 		partial := NotePartialData{
-			NotePath:    reqPath,
-			NoteTitle:   noteTitle,
-			Frontmatter: fm,
-			HTML:        template.HTML(html),
-			SSEWatch:    viewSSEWatch(reqPath),
-			ViewHref:    "/view/" + viewPath(reqPath),
-			EditPath:    editPath,
-			EditHref:    eHref,
+			NotePath:  reqPath,
+			NoteTitle: noteTitle,
+			Note:      note,
+			HTML:      template.HTML(html),
+			SSEWatch:  viewSSEWatch(reqPath),
+			ViewHref:  "/view/" + viewPath(reqPath),
+			EditPath:  editPath,
+			EditHref:  eHref,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := s.templates.renderNotePartial(w, partial); err != nil {
@@ -164,7 +173,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		layoutFields: lf,
 		NotePath:     reqPath,
 		NoteTitle:    noteTitle,
-		Frontmatter:  fm,
+		Note:         note,
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
 		ViewHref:     "/view/" + viewPath(reqPath),

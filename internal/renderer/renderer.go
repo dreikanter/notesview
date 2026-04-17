@@ -22,13 +22,6 @@ var leadingH1 = regexp.MustCompile(`(?s)^\s*<h1[^>]*>\s*(.*?)\s*</h1>`)
 // can compare it against a plain frontmatter title.
 var tagStripper = regexp.MustCompile(`<[^>]+>`)
 
-type Frontmatter struct {
-	Title       string   `yaml:"title"`
-	Tags        []string `yaml:"tags"`
-	Description string   `yaml:"description"`
-	Slug        string   `yaml:"slug"`
-}
-
 type Renderer struct {
 	md    goldmark.Markdown
 	index *index.NoteIndex
@@ -55,7 +48,10 @@ func NewRenderer(idx *index.NoteIndex) *Renderer {
 
 // Render converts markdown to HTML. currentDir is the note's parent
 // directory relative to the notes root (used to resolve `[text](./rel.md)`).
-func (r *Renderer) Render(source []byte, currentDir string) (string, *Frontmatter, error) {
+// Frontmatter is consumed by goldmark-meta (so its YAML fence does not
+// render as content), but this method does not return it — the index is
+// the single source of truth for note metadata.
+func (r *Renderer) Render(source []byte, currentDir string) (string, error) {
 	ctx := parser.NewContext()
 	if r.index != nil {
 		ctx.Set(noteLinkStateKey, &noteLinkState{
@@ -66,37 +62,22 @@ func (r *Renderer) Render(source []byte, currentDir string) (string, *Frontmatte
 
 	var buf bytes.Buffer
 	if err := r.md.Convert(source, &buf, parser.WithContext(ctx)); err != nil {
-		return "", nil, err
-	}
-
-	var fm *Frontmatter
-	metaData := meta.Get(ctx)
-	if metaData != nil {
-		fm = &Frontmatter{}
-		if t, ok := metaData["title"].(string); ok {
-			fm.Title = t
-		}
-		if d, ok := metaData["description"].(string); ok {
-			fm.Description = d
-		}
-		if s, ok := metaData["slug"].(string); ok {
-			fm.Slug = s
-		}
-		if tags, ok := metaData["tags"].([]interface{}); ok {
-			for _, tag := range tags {
-				if s, ok := tag.(string); ok {
-					fm.Tags = append(fm.Tags, s)
-				}
-			}
-		}
+		return "", err
 	}
 
 	html := buf.String()
 	html = processTaskSyntax(html)
-	if fm != nil && fm.Title != "" {
-		html = stripRedundantTitle(html, fm.Title)
+	return html, nil
+}
+
+// StripRedundantTitle removes a leading <h1>X</h1> from html when its
+// plain-text content equals title. Returns html unchanged when title is
+// empty or no match is found.
+func StripRedundantTitle(html, title string) string {
+	if title == "" {
+		return html
 	}
-	return html, fm, nil
+	return stripRedundantTitle(html, title)
 }
 
 // stripRedundantTitle removes a leading <h1> whose plain-text content equals

@@ -385,6 +385,81 @@ func TestNoteEntryTitle(t *testing.T) {
 	}
 }
 
+func TestNoteEntryDescription(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "a.md"),
+		"---\ndescription: A short summary\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "b.md"), "# No frontmatter\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := entryByRel(t, idx, "a.md").Description; got != "A short summary" {
+		t.Errorf("Description = %q, want %q", got, "A short summary")
+	}
+	if got := entryByRel(t, idx, "b.md").Description; got != "" {
+		t.Errorf("Description = %q, want empty", got)
+	}
+}
+
+func TestNoteEntryByRel(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdirAll(t, filepath.Join(dir, "sub"))
+	mustWriteFile(t, filepath.Join(dir, "sub", "note.md"),
+		"---\ntitle: Nested\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "root.md"), "# Root\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	got, ok := idx.NoteEntryByRel("sub/note.md")
+	if !ok {
+		t.Fatal("NoteEntryByRel(sub/note.md) = !ok, want ok")
+	}
+	if got.Title != "Nested" {
+		t.Errorf("Title = %q, want Nested", got.Title)
+	}
+
+	if _, ok := idx.NoteEntryByRel("root.md"); !ok {
+		t.Error("NoteEntryByRel(root.md) = !ok, want ok")
+	}
+	if _, ok := idx.NoteEntryByRel("missing.md"); ok {
+		t.Error("NoteEntryByRel(missing.md) = ok, want !ok")
+	}
+}
+
+// TestNoteEntryByRelReturnsDefensiveCopy pins that mutating the returned
+// entry's slice fields does not corrupt internal storage. Matches the
+// defensive-copy convention used by Tags and NotesByTag.
+func TestNoteEntryByRelReturnsDefensiveCopy(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "note.md"),
+		"---\ntags: [a, b]\naliases: [x, y]\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	first, ok := idx.NoteEntryByRel("note.md")
+	if !ok {
+		t.Fatal("NoteEntryByRel = !ok, want ok")
+	}
+	first.Tags[0] = "MUTATED"
+	first.Aliases[0] = "MUTATED"
+
+	second, _ := idx.NoteEntryByRel("note.md")
+	if second.Tags[0] != "a" {
+		t.Errorf("Tags[0] = %q, want %q (caller mutation leaked into index)", second.Tags[0], "a")
+	}
+	if second.Aliases[0] != "x" {
+		t.Errorf("Aliases[0] = %q, want %q (caller mutation leaked into index)", second.Aliases[0], "x")
+	}
+}
+
 func TestNoteEntryAliases(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "inline.md"),
