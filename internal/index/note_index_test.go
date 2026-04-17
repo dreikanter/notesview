@@ -431,6 +431,35 @@ func TestNoteEntryByRel(t *testing.T) {
 	}
 }
 
+// TestNoteEntryByRelReturnsDefensiveCopy pins that mutating the returned
+// entry's slice fields does not corrupt internal storage. Matches the
+// defensive-copy convention used by Tags and NotesByTag.
+func TestNoteEntryByRelReturnsDefensiveCopy(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "note.md"),
+		"---\ntags: [a, b]\naliases: [x, y]\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	first, ok := idx.NoteEntryByRel("note.md")
+	if !ok {
+		t.Fatal("NoteEntryByRel = !ok, want ok")
+	}
+	first.Tags[0] = "MUTATED"
+	first.Aliases[0] = "MUTATED"
+
+	second, _ := idx.NoteEntryByRel("note.md")
+	if second.Tags[0] != "a" {
+		t.Errorf("Tags[0] = %q, want %q (caller mutation leaked into index)", second.Tags[0], "a")
+	}
+	if second.Aliases[0] != "x" {
+		t.Errorf("Aliases[0] = %q, want %q (caller mutation leaked into index)", second.Aliases[0], "x")
+	}
+}
+
 func TestNoteEntryAliases(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "inline.md"),

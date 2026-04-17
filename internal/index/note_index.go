@@ -193,7 +193,9 @@ func (i *NoteIndex) NoteByUID(uid string) (string, bool) {
 }
 
 // NoteEntryByRel returns the NoteEntry whose RelPath equals rel (expected
-// in forward-slash form) and a found flag.
+// in forward-slash form) and a found flag. Slice fields (Tags, Aliases)
+// are defensively copied so callers cannot mutate the index's internal
+// storage — matching the convention used by Tags and NotesByTag.
 func (i *NoteIndex) NoteEntryByRel(rel string) (NoteEntry, bool) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
@@ -201,7 +203,10 @@ func (i *NoteIndex) NoteEntryByRel(rel string) (NoteEntry, bool) {
 	if !ok {
 		return NoteEntry{}, false
 	}
-	return i.entries[idx], true
+	entry := i.entries[idx]
+	entry.Tags = append([]string(nil), entry.Tags...)
+	entry.Aliases = append([]string(nil), entry.Aliases...)
+	return entry, true
 }
 
 // Tags returns a copy of the sorted, deduplicated tag list.
