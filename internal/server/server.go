@@ -75,7 +75,7 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	}
 
-	return logRequests(s.logger)(rejectDirtyPaths(mux))
+	return logRequests(s.logger)(rejectDirtyPaths(setHXCacheHeaders(mux)))
 }
 
 // rejectDirtyPaths returns 400 for any request whose raw URL path is not

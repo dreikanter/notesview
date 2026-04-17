@@ -97,3 +97,27 @@ func logRequests(logger *slog.Logger) func(http.Handler) http.Handler {
 func isNoisyPath(path string) bool {
 	return strings.HasPrefix(path, "/static/")
 }
+
+// setHXCacheHeaders annotates responses so caches never serve an HTMX
+// partial in place of a full-page navigation at the same URL.
+//
+// Several routes (/view/..., /dir/..., /tags, /tags/{tag}) return the
+// full layout for a top-level GET but a bare fragment when HTMX asks
+// for an in-page swap. Without Vary, any URL-keyed cache treats those
+// two bodies as interchangeable — Firefox restoring a closed tab with
+// Cmd+Shift+T then replays the partial as a document and the page
+// renders with no <head> and no stylesheet.
+//
+// Vary: HX-Request, HX-Target teaches conforming HTTP caches that the
+// response is per-header. Cache-Control: no-store on the partial
+// additionally keeps it out of Firefox's session store, which replays
+// response bodies on tab restore and does not honor Vary.
+func setHXCacheHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Vary", "HX-Request, HX-Target")
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
