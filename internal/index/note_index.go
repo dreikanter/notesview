@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +14,16 @@ import (
 
 	"github.com/dreikanter/notes-view/internal/logging"
 )
+
+var uidPattern = regexp.MustCompile(`^(\d{5,}_\d+)`)
+
+var fullUIDPattern = regexp.MustCompile(`^\d{5,}_\d+$`)
+
+// IsUID reports whether s matches the UID format: 5+ digits, an
+// underscore, then 1+ digits.
+func IsUID(s string) bool {
+	return fullUIDPattern.MatchString(s)
+}
 
 // NoteEntry is the per-file record built during a single walk. Fields not
 // needed for today's lookups are populated for future derived maps

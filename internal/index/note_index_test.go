@@ -253,7 +253,7 @@ func TestParseFrontmatterIndentedTripleDashIsNotFence(t *testing.T) {
 	}
 }
 
-func setupNoteIndexTagFixtures(t *testing.T) string {
+func setupTagFixtures(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "note_golang_web.md"),
@@ -269,8 +269,8 @@ func setupNoteIndexTagFixtures(t *testing.T) string {
 	return dir
 }
 
-func TestNoteIndexTagsSorted(t *testing.T) {
-	dir := setupNoteIndexTagFixtures(t)
+func TestTagsSorted(t *testing.T) {
+	dir := setupTagFixtures(t)
 	idx := New(dir, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
@@ -287,8 +287,8 @@ func TestNoteIndexTagsSorted(t *testing.T) {
 	}
 }
 
-func TestNoteIndexNotesByTag(t *testing.T) {
-	dir := setupNoteIndexTagFixtures(t)
+func TestNotesByTag(t *testing.T) {
+	dir := setupTagFixtures(t)
 	idx := New(dir, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
@@ -308,7 +308,7 @@ func TestNoteIndexNotesByTag(t *testing.T) {
 	}
 }
 
-func TestNoteIndexNotesByTagDeduplicatesWithinFile(t *testing.T) {
+func TestNotesByTagDeduplicatesWithinFile(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "dups.md"),
 		"---\ntags: [go, go]\n---\n")
@@ -333,7 +333,7 @@ func TestNoteIndexNotesByTagDeduplicatesWithinFile(t *testing.T) {
 	}
 }
 
-func TestNoteIndexNotesByTagSortedRelPaths(t *testing.T) {
+func TestNotesByTagSortedRelPaths(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirAll(t, filepath.Join(dir, "b"))
 	mustMkdirAll(t, filepath.Join(dir, "a"))
@@ -564,5 +564,35 @@ func TestUnreadableFileStillIndexedByUID(t *testing.T) {
 	// Tags should be absent (we couldn't read the frontmatter).
 	if got := idx.NotesByTag("go"); len(got) != 0 {
 		t.Errorf("NotesByTag(go) = %v, want empty (file unreadable)", got)
+	}
+}
+
+func TestIsUID(t *testing.T) {
+	tests := []struct {
+		s    string
+		want bool
+	}{
+		// Classic 4-digit year
+		{"20260331_9201", true},
+		{"20261231_0001", true},
+		// Variable-width year (5+ digits before "_")
+		{"12026_0001", true}, // 1-digit year ("1"), month 20, day 26 — still valid as UID pattern
+		{"12345_0001", true}, // 1-digit year, month 23, day 45 — UID pattern only, date validity checked elsewhere
+		// Too few digits before "_"
+		{"2026_0001", false}, // only 4 digits
+		{"1234_0001", false},
+		// Missing or malformed suffix
+		{"20260331_", false},
+		{"20260331_abc", false},
+		// Not a UID shape at all
+		{"hello_world", false},
+		{"202603319201", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			if got := IsUID(tt.s); got != tt.want {
+				t.Errorf("IsUID(%q) = %v, want %v", tt.s, got, tt.want)
+			}
+		})
 	}
 }
