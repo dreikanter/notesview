@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,7 @@ func New(root string, logger *slog.Logger) *NoteIndex {
 func (i *NoteIndex) Build() error {
 	var entries []NoteEntry
 	byUID := make(map[string]string)
+	byTag := make(map[string][]string)
 
 	err := filepath.WalkDir(i.root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -90,15 +92,27 @@ func (i *NoteIndex) Build() error {
 			uid = m[1]
 		}
 
+		fm, fmErr := parseFrontmatter(path)
+		if fmErr != nil {
+			i.logger.Warn("frontmatter parse failed", "path", rel, "err", fmErr)
+			fm = frontmatter{}
+		}
+
+		tags := dedupStrings(fm.Tags)
+
 		entry := NoteEntry{
 			RelPath: rel,
 			UID:     uid,
 			Stem:    stem,
+			Tags:    tags,
 		}
 		entries = append(entries, entry)
 
 		if uid != "" {
 			byUID[uid] = rel
+		}
+		for _, t := range tags {
+			byTag[t] = append(byTag[t], rel)
 		}
 		return nil
 	})
@@ -106,11 +120,20 @@ func (i *NoteIndex) Build() error {
 		return err
 	}
 
+	allTags := make([]string, 0, len(byTag))
+	for t := range byTag {
+		allTags = append(allTags, t)
+	}
+	sort.Strings(allTags)
+	for t := range byTag {
+		sort.Strings(byTag[t])
+	}
+
 	i.mu.Lock()
 	i.entries = entries
 	i.byUID = byUID
-	i.byTag = make(map[string][]string)
-	i.allTags = nil
+	i.byTag = byTag
+	i.allTags = allTags
 	i.mu.Unlock()
 	return nil
 }
@@ -136,4 +159,42 @@ func (i *NoteIndex) NoteByUID(uid string) (string, bool) {
 	defer i.mu.RUnlock()
 	p, ok := i.byUID[uid]
 	return p, ok
+}
+
+// Tags returns a copy of the sorted, deduplicated tag list.
+func (i *NoteIndex) Tags() []string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	out := make([]string, len(i.allTags))
+	copy(out, i.allTags)
+	return out
+}
+
+// NotesByTag returns a copy of the sorted rel-path slice for a tag.
+// Unknown tags return a non-nil empty slice.
+func (i *NoteIndex) NotesByTag(tag string) []string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	paths := i.byTag[tag]
+	out := make([]string, len(paths))
+	copy(out, paths)
+	return out
+}
+
+// dedupStrings returns s with duplicates removed, preserving first-seen
+// order. A nil or empty input returns nil.
+func dedupStrings(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(s))
+	out := make([]string, 0, len(s))
+	for _, v := range s {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }

@@ -251,3 +251,100 @@ func TestParseFrontmatterIndentedTripleDashIsNotFence(t *testing.T) {
 		t.Errorf("Tags = %v, want [x]", fm.Tags)
 	}
 }
+
+func setupNoteIndexTagFixtures(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "note_golang_web.md"),
+		"---\ntitle: Golang Web\ntags: [golang, web]\n---\nContent.\n")
+	mustWriteFile(t, filepath.Join(dir, "note_golang_testing.md"),
+		"---\ntitle: Golang Testing\ntags:\n  - golang\n  - testing\n---\nContent.\n")
+	mustWriteFile(t, filepath.Join(dir, "note_no_tags.md"),
+		"---\ntitle: No Tags\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "note_empty_tags.md"),
+		"---\ntitle: Empty Tags\ntags: []\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "readme.txt"),
+		"not markdown")
+	return dir
+}
+
+func TestNoteIndexTagsSorted(t *testing.T) {
+	dir := setupNoteIndexTagFixtures(t)
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.Tags()
+	want := []string{"golang", "testing", "web"}
+	if len(got) != len(want) {
+		t.Fatalf("Tags() = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("Tags()[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestNoteIndexNotesByTag(t *testing.T) {
+	dir := setupNoteIndexTagFixtures(t)
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := idx.NotesByTag("golang"); len(got) != 2 {
+		t.Errorf("NotesByTag(golang) = %v, want 2 entries", got)
+	}
+	if got := idx.NotesByTag("web"); len(got) != 1 {
+		t.Errorf("NotesByTag(web) = %v, want 1 entry", got)
+	}
+	none := idx.NotesByTag("nonexistent")
+	if none == nil {
+		t.Error("NotesByTag(nonexistent) = nil, want non-nil empty slice")
+	}
+	if len(none) != 0 {
+		t.Errorf("NotesByTag(nonexistent) = %v, want empty", none)
+	}
+}
+
+func TestNoteIndexNotesByTagDeduplicatesWithinFile(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "dups.md"),
+		"---\ntags: [go, go]\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "one.md"),
+		"---\ntags: [go]\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "two.md"),
+		"---\ntags: [go]\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	tags := idx.Tags()
+	if len(tags) != 1 || tags[0] != "go" {
+		t.Errorf("Tags() = %v, want [go]", tags)
+	}
+	// dups.md contributes exactly one "go" slot (within-file dedup);
+	// one.md and two.md each contribute one → total 3.
+	notes := idx.NotesByTag("go")
+	if len(notes) != 3 {
+		t.Errorf("NotesByTag(go) = %v, want 3 entries", notes)
+	}
+}
+
+func TestNoteIndexNotesByTagSortedRelPaths(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdirAll(t, filepath.Join(dir, "b"))
+	mustMkdirAll(t, filepath.Join(dir, "a"))
+	mustWriteFile(t, filepath.Join(dir, "b", "note.md"), "---\ntags: [t]\n---\n")
+	mustWriteFile(t, filepath.Join(dir, "a", "note.md"), "---\ntags: [t]\n---\n")
+
+	idx := New(dir, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	notes := idx.NotesByTag("t")
+	if len(notes) != 2 || notes[0] != "a/note.md" || notes[1] != "b/note.md" {
+		t.Errorf("NotesByTag(t) = %v, want [a/note.md b/note.md]", notes)
+	}
+}
