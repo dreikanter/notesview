@@ -29,7 +29,7 @@ type Index struct {
 	building sync.Mutex
 }
 
-func New(root string, logger *slog.Logger) *Index {
+func NewLegacy(root string, logger *slog.Logger) *Index {
 	if logger == nil {
 		logger = logging.Discard()
 	}

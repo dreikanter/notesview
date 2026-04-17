@@ -32,7 +32,7 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 	if logger == nil {
 		logger = logging.Discard()
 	}
-	idx := index.New(root, logger)
+	idx := index.NewLegacy(root, logger)
 	if err := idx.Build(); err != nil {
 		return nil, fmt.Errorf("initial index build: %w", err)
 	}

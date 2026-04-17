@@ -22,9 +22,9 @@ func setupTestDir(t *testing.T) string {
 	return dir
 }
 
-func TestIndexBuild(t *testing.T) {
+func TestLegacyIndexBuild(t *testing.T) {
 	dir := setupTestDir(t)
-	idx := New(dir, nil)
+	idx := NewLegacy(dir, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build failed: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestIndexBuild(t *testing.T) {
 	}
 }
 
-func TestBuildSkipsUnreadableDirs(t *testing.T) {
+func TestLegacyBuildSkipsUnreadableDirs(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-based test not reliable on Windows")
 	}
@@ -76,7 +76,7 @@ func TestBuildSkipsUnreadableDirs(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	idx := New(dir, logger)
+	idx := NewLegacy(dir, logger)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build returned unexpected error: %v", err)
 	}
@@ -97,8 +97,8 @@ func TestBuildSkipsUnreadableDirs(t *testing.T) {
 	}
 }
 
-func TestBuildReturnsNonPermissionError(t *testing.T) {
-	idx := New("/nonexistent-root-path-that-does-not-exist", nil)
+func TestLegacyBuildReturnsNonPermissionError(t *testing.T) {
+	idx := NewLegacy("/nonexistent-root-path-that-does-not-exist", nil)
 	if err := idx.Build(); err == nil {
 		t.Fatal("expected Build to return an error for nonexistent root")
 	}

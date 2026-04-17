@@ -69,7 +69,7 @@ func setupTestIndex(t *testing.T) *index.Index {
 	if err := os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
-	idx := index.New(dir, nil)
+	idx := index.NewLegacy(dir, nil)
 	idx.Build()
 	return idx
 }
