@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notes-view/internal/renderer"
+	"github.com/dreikanter/notes-view/internal/index"
 )
 
 func TestLoadTemplates(t *testing.T) {
@@ -100,7 +100,7 @@ func TestRenderView(t *testing.T) {
 		},
 		NotePath:  "notes/test.md",
 		NoteTitle: "Test Note",
-		Frontmatter: &renderer.Frontmatter{
+		Note: &index.NoteEntry{
 			Title:       "Test Note",
 			Tags:        []string{"go", "testing"},
 			Description: "A test note",
@@ -182,7 +182,7 @@ func TestRenderNotePartial(t *testing.T) {
 	data := NotePartialData{
 		NotePath:  "2026/03/note.md",
 		NoteTitle: "March Note",
-		Frontmatter: &renderer.Frontmatter{
+		Note: &index.NoteEntry{
 			Title: "March Note",
 			Tags:  []string{"journal"},
 		},

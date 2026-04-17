@@ -27,7 +27,7 @@
   </header>
   {{ end }}
   <div class="px-6 py-6 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
-    {{ with .Frontmatter }}
+    {{ with .Note }}
     {{ if or .Title .Description .Tags }}
     <div class="pb-4 mb-6 border-b border-gray-200">
       {{ if .Title }}<h1 class="text-[28px] font-semibold leading-tight text-gray-900 mt-0 mb-2">{{ .Title }}</h1>{{ end }}

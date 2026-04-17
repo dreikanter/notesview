@@ -21,11 +21,12 @@ func isFenceLine(line string) bool {
 // given file default to Go zero values. The struct is intentionally
 // private: extending it with new fields is a local change.
 type frontmatter struct {
-	Title   string    `yaml:"title"`
-	Slug    string    `yaml:"slug"`
-	Tags    []string  `yaml:"tags"`
-	Aliases []string  `yaml:"aliases"`
-	Date    time.Time `yaml:"date"`
+	Title       string    `yaml:"title"`
+	Slug        string    `yaml:"slug"`
+	Description string    `yaml:"description"`
+	Tags        []string  `yaml:"tags"`
+	Aliases     []string  `yaml:"aliases"`
+	Date        time.Time `yaml:"date"`
 }
 
 // parseFrontmatter reads the file at path, extracts the YAML block between
