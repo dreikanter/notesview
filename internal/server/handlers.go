@@ -214,7 +214,7 @@ func (s *Server) buildDirIndex(sidebarDir string) (*IndexCard, error) {
 
 // buildTagsIndex assembles an IndexCard in tags mode from the tag index.
 func (s *Server) buildTagsIndex() *IndexCard {
-	tags := s.tagIndex.Tags()
+	tags := s.index.Tags()
 	entries := make([]IndexEntry, len(tags))
 	for i, tag := range tags {
 		entries[i] = IndexEntry{
@@ -403,7 +403,7 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
-	notes := s.tagIndex.NotesByTag(tag)
+	notes := s.index.NotesByTag(tag)
 	entries := make([]IndexEntry, len(notes))
 	for i, notePath := range notes {
 		entries[i] = IndexEntry{

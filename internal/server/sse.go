@@ -15,14 +15,13 @@ import (
 )
 
 type SSEHub struct {
-	root     string
-	logger   *slog.Logger
-	index    *index.Index
-	tagIndex *index.TagIndex
-	mu       sync.RWMutex
-	clients  map[*sseClient]struct{}
-	watcher  *fsnotify.Watcher
-	done     chan struct{}
+	root    string
+	logger  *slog.Logger
+	index   *index.NoteIndex
+	mu      sync.RWMutex
+	clients map[*sseClient]struct{}
+	watcher *fsnotify.Watcher
+	done    chan struct{}
 }
 
 type sseClient struct {
@@ -30,17 +29,16 @@ type sseClient struct {
 	events    chan string
 }
 
-func NewSSEHub(root string, logger *slog.Logger, idx *index.Index, tagIdx *index.TagIndex) *SSEHub {
+func NewSSEHub(root string, logger *slog.Logger, idx *index.NoteIndex) *SSEHub {
 	if logger == nil {
 		logger = logging.Discard()
 	}
 	return &SSEHub{
-		root:     root,
-		logger:   logger,
-		index:    idx,
-		tagIndex: tagIdx,
-		clients:  make(map[*sseClient]struct{}),
-		done:     make(chan struct{}),
+		root:    root,
+		logger:  logger,
+		index:   idx,
+		clients: make(map[*sseClient]struct{}),
+		done:    make(chan struct{}),
 	}
 }
 
@@ -78,13 +76,10 @@ func (h *SSEHub) eventLoop() {
 			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
 				continue
 			}
-			if event.Op&fsnotify.Create != 0 && h.index != nil {
+			// Content (frontmatter) and filenames (UIDs) can both
+			// change on Write or Create — rebuild once either way.
+			if h.index != nil {
 				h.index.Rebuild()
-			}
-			// Tags live inside file content, so rebuild the tag index
-			// on both Create and Write events.
-			if h.tagIndex != nil {
-				h.tagIndex.Rebuild()
 			}
 			p := event.Name
 			if t, ok := timers[p]; ok {
