@@ -66,6 +66,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/edit/{filepath...}", s.handleEdit)
 	mux.HandleFunc("GET /api/raw/{filepath...}", s.handleRaw)
 	mux.HandleFunc("GET /events", s.handleSSE)
+	mux.HandleFunc("GET /api/tree/list", s.handleTreeList)
 	mux.HandleFunc("GET /", s.handleRoot)
 
 	staticFS, err := fs.Sub(web.StaticFS, "static")
