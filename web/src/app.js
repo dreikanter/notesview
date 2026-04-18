@@ -101,9 +101,13 @@ function markSelected(selector) {
   var el = document.querySelector(selector);
   if (el) {
     el.classList.add('selected', 'bg-blue-100', 'border-blue-300', 'text-blue-700');
-    el.scrollIntoView({ block: 'center', inline: 'nearest' });
   }
 }
+
+// Set by deliberate navigation (selectNote/Dir/Tag) so the next swap that
+// finds the selected element scrolls it into view. Sidebar-only actions
+// like toggleDir leave it unset, so they don't hijack the viewport.
+var pendingScrollToSelected = false;
 
 // --- Directory navigation ---
 
@@ -111,6 +115,7 @@ window.selectDir = function(href, skipPush) {
   var dirPath = href.replace(/^\/dir\//, '');
   setLS('filesDir', decodeURIComponent(dirPath));
   setLS('selected', href);
+  pendingScrollToSelected = true;
 
   // Push browser URL
   if (!skipPush) history.pushState({ type: 'dir', href: href }, '', href);
@@ -162,6 +167,7 @@ window.selectTag = function(tag, skipPush) {
   var href = '/tags/' + encodeURIComponent(tag);
   setLS('tagsTag', tag);
   setLS('selected', href);
+  pendingScrollToSelected = true;
 
   // Push browser URL
   if (!skipPush) history.pushState({ type: 'tag', tag: tag, href: href }, '', href);
@@ -187,6 +193,7 @@ var pendingNoteScrollReset = false;
 
 window.selectNote = function(href, skipPush) {
   setLS('selected', href);
+  pendingScrollToSelected = true;
 
   // Push browser URL
   if (!skipPush) history.pushState({ type: 'note', href: href }, '', href);
@@ -304,11 +311,20 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
     pendingNoteScrollReset = false;
   }
 
-  // Re-apply selection highlight after any swap
+  // Re-apply selection highlight after any swap. Scroll into view only
+  // when a deliberate navigation flagged it — toggleDir swaps must not
+  // yank the viewport away from where the user's cursor is.
   var selected = getLS('selected', '');
   if (selected) {
     setTimeout(function() {
       markSelected('[data-entry-href="' + selected + '"]');
+      if (pendingScrollToSelected) {
+        var el = document.querySelector('[data-entry-href="' + selected + '"]');
+        if (el) {
+          el.scrollIntoView({ block: 'center', inline: 'nearest' });
+          pendingScrollToSelected = false;
+        }
+      }
     }, 0);
   }
 });

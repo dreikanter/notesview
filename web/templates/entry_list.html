@@ -14,21 +14,21 @@
       class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
   </li>
   {{ else if .IsDir }}
-  <li class="border-b border-gray-100 last:border-b-0 flex items-stretch" style="{{ if .Depth }}margin-left: {{ .Depth }}rem{{ end }}">
+  <li class="group border-b border-gray-100 last:border-b-0 flex items-stretch transition-colors duration-100 hover:bg-blue-100" style="{{ if .Depth }}margin-left: {{ .Depth }}rem{{ end }}">
     <button
       type="button"
       data-action="toggleDir"
       data-entry-href="{{ .Href }}"
       data-expanded="{{ if .Expanded }}1{{ else }}0{{ end }}"
       aria-label="{{ if .Expanded }}Collapse{{ else }}Expand{{ end }} {{ .Name }}"
-      class="dir-toggle flex items-center justify-center w-8 flex-shrink-0 text-gray-400 leading-none cursor-pointer hover:bg-blue-50 hover:text-gray-700 border-0 bg-transparent p-0">{{ if .Expanded }}&#9662;{{ else }}&#9656;{{ end }}</button>
+      class="dir-toggle flex items-center justify-center w-8 flex-shrink-0 text-gray-400 leading-none cursor-pointer group-hover:text-gray-700 border-0 bg-transparent p-0">{{ if .Expanded }}&#9662;{{ else }}&#9656;{{ end }}</button>
     <a
       href="{{ .Href }}"
       title="{{ .Name }}"
       data-action="selectDir"
       data-entry-type="dir"
       data-entry-href="{{ .Href }}"
-      class="entry-link flex-1 min-w-0 flex items-center gap-2 pr-4 py-2 text-sm text-blue-600 font-medium no-underline transition-colors duration-100 border border-transparent hover:bg-blue-100 hover:border-blue-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
+      class="entry-link flex-1 min-w-0 flex items-center gap-2 pr-4 py-2 text-sm text-blue-600 font-medium no-underline border border-transparent"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
   </li>
   {{ else }}
   <li class="border-b border-gray-100 last:border-b-0" style="{{ if .Depth }}margin-left: {{ .Depth }}rem{{ end }}">
