@@ -247,11 +247,10 @@ func TestRenderSidebarPartial(t *testing.T) {
 	}
 
 	body := buf.String()
-	if !strings.Contains(body, "readme.md") {
-		t.Error("renderSidebarPartial: expected file entry 'readme.md'")
-	}
-	if !strings.Contains(body, "subdir") {
-		t.Error("renderSidebarPartial: expected directory entry 'subdir'")
+	// Files section now renders a client-side TreeView placeholder; file
+	// entries are no longer server-rendered inside the sidebar.
+	if !strings.Contains(body, `id="sidebar-tree"`) {
+		t.Error("renderSidebarPartial: expected #sidebar-tree placeholder")
 	}
 
 	// Should NOT contain full layout elements.
@@ -306,8 +305,9 @@ func TestRenderSidebarPartial_Tree(t *testing.T) {
 	}{
 		{"files heading", "FILES"},
 		{"tags heading", "TAGS"},
-		{"dir entry", "notes"},
-		{"file entry", "README.md"},
+		// Files section renders a client-side placeholder; entries are not server-rendered.
+		{"sidebar-tree placeholder", `id="sidebar-tree"`},
+		// Tags are still server-rendered in the sidebar.
 		{"tag entry", "golang"},
 		{"files-content target", `id="files-content"`},
 		{"tags-content target", `id="tags-content"`},
