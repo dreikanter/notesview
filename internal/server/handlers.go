@@ -336,7 +336,11 @@ func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
 	// chevron to expand a dir in place without re-rendering the whole
 	// tree (so the clicked row stays under the cursor).
 	if r.URL.Query().Get("children") == "1" {
-		depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
+		depth, err := strconv.Atoi(r.URL.Query().Get("depth"))
+		if err != nil || depth < 0 {
+			http.Error(w, "invalid depth", http.StatusBadRequest)
+			return
+		}
 		absPath, err := SafePath(s.root, dirPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

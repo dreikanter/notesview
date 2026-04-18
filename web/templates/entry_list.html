@@ -29,6 +29,7 @@
     data-action="toggleDir"
     data-entry-href="{{ .Href }}"
     data-expanded="{{ if .Expanded }}1{{ else }}0{{ end }}"
+    aria-expanded="{{ if .Expanded }}true{{ else }}false{{ end }}"
     aria-label="{{ if .Expanded }}Collapse{{ else }}Expand{{ end }} {{ .Name }}"
     class="dir-toggle flex items-center justify-center w-8 flex-shrink-0 text-gray-400 leading-none cursor-pointer group-hover:text-gray-700 border-0 bg-transparent p-0">{{ if .Expanded }}&#9662;{{ else }}&#9656;{{ end }}</button>
   <a

@@ -244,6 +244,7 @@ function revealSelected(href) {
 function setChevronState(button, expanded) {
   button.textContent = expanded ? '\u25BE' : '\u25B8';
   button.setAttribute('data-expanded', expanded ? '1' : '0');
+  button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   var name = button.getAttribute('aria-label') || '';
   name = name.replace(/^(Collapse|Expand)\s+/, '');
   button.setAttribute('aria-label', (expanded ? 'Collapse ' : 'Expand ') + name);
