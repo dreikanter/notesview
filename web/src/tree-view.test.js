@@ -394,3 +394,81 @@ describe('TreeView refresh-during-load queue', () => {
     expect(calls.filter((c) => c === 'a').length).toBe(2)
   })
 })
+
+describe('TreeView persistence', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+    localStorage.clear()
+  })
+
+  it('persists expanded + selected on change', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested), persistKey: 'tv' })
+    await tv.ready
+    await tv.expand('a')
+    tv.select('readme.md')
+    const saved = JSON.parse(localStorage.getItem('tv'))
+    expect(saved.version).toBe(1)
+    expect(saved.expanded).toEqual(['a'])
+    expect(saved.selected).toBe('readme.md')
+  })
+
+  it('bootstrap restores expanded + selected from localStorage', async () => {
+    localStorage.setItem('tv', JSON.stringify({ version: 1, expanded: ['a'], selected: 'readme.md' }))
+    const tv = new TreeView(container, { loader: makeLoader(nested), persistKey: 'tv' })
+    await tv.ready
+    expect(container.querySelector('[data-path="a/inner.md"]')).toBeTruthy()
+    expect(container.querySelector('[data-path="readme.md"]').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('invalid JSON in storage is ignored', async () => {
+    localStorage.setItem('tv', '{not json')
+    const tv = new TreeView(container, { loader: makeLoader(nested), persistKey: 'tv' })
+    await tv.ready
+    expect(tv.expandedPaths.size).toBe(0)
+  })
+
+  it('stale expanded paths are pruned and re-persisted', async () => {
+    localStorage.setItem('tv', JSON.stringify({ version: 1, expanded: ['a', 'ghost'], selected: null }))
+    const tv = new TreeView(container, { loader: makeLoader(nested), persistKey: 'tv' })
+    await tv.ready
+    const saved = JSON.parse(localStorage.getItem('tv'))
+    expect(saved.expanded).toEqual(['a'])
+  })
+
+  it('initial.selectedPath wins over persisted selected and merges expansion with ancestors', async () => {
+    localStorage.setItem('tv', JSON.stringify({ version: 1, expanded: ['a'], selected: 'readme.md' }))
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      persistKey: 'tv',
+      initial: { selectedPath: 'b/deep/x.md' },
+    })
+    await tv.ready
+    expect(tv.expandedPaths.has('a')).toBe(true)
+    expect(tv.expandedPaths.has('b')).toBe(true)
+    expect(tv.expandedPaths.has('b/deep')).toBe(true)
+    expect(tv.selectedPath).toBe('b/deep/x.md')
+    expect(container.querySelector('[data-path="b/deep/x.md"]').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('initial.selectedPath applied silently does not emit tree:select', async () => {
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      initial: { selectedPath: 'readme.md' },
+    })
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    await tv.ready
+    expect(events.length).toBe(0)
+    expect(tv.selectedPath).toBe('readme.md')
+  })
+
+  it('wrong version is dropped', async () => {
+    localStorage.setItem('tv', JSON.stringify({ version: 99, expanded: ['a'], selected: 'x' }))
+    const tv = new TreeView(container, { loader: makeLoader(nested), persistKey: 'tv' })
+    await tv.ready
+    expect(tv.expandedPaths.size).toBe(0)
+    expect(tv.selectedPath).toBeNull()
+  })
+})

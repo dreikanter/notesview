@@ -36,6 +36,9 @@ export class TreeView {
     this.renderIcon = options.renderIcon
     this.classPrefix = options.classPrefix ?? 'tv-'
 
+    this.persistKey = options.persistKey
+    this.initial = options.initial ?? null
+
     this.nodesByPath = new Map()
     this.childrenByPath = new Map()
     this.expandedPaths = new Set()
@@ -57,8 +60,30 @@ export class TreeView {
   }
 
   async _bootstrap() {
-    const children = await this._loadChildren(this.rootPath)
-    this._renderChildren(this.rootPath, this.root, children, 0)
+    await this._loadChildren(this.rootPath)
+    this._renderChildren(this.rootPath, this.root, this._nodesAt(this.rootPath), 0)
+
+    const stored = this._readStorage()
+    const initialSelected = this.initial?.selectedPath ?? null
+    const initialExpanded = initialSelected ? this._ancestors(initialSelected) : []
+    const fromStorage = stored?.expanded ?? []
+    const toExpand = Array.from(new Set([...fromStorage, ...initialExpanded]))
+      .sort((a, b) => a.split('/').length - b.split('/').length)
+
+    for (const p of toExpand) {
+      await this.expand(p)
+    }
+
+    const staleFromStorage = fromStorage.filter((p) => !this.expandedPaths.has(p))
+    if (this.persistKey && stored && staleFromStorage.length > 0) {
+      this._writeStorage()
+    }
+
+    const selected = initialSelected ?? stored?.selected ?? null
+    if (selected) {
+      const li = this._findItem(selected)
+      if (li) this.select(selected, { source: 'silent' })
+    }
   }
 
   async _loadChildren(path) {
@@ -172,6 +197,7 @@ export class TreeView {
     li.setAttribute('aria-expanded', 'true')
     this.expandedPaths.add(path)
     this.container.dispatchEvent(new CustomEvent('tree:toggle', { detail: { path, expanded: true } }))
+    this._writeStorage()
   }
 
   async refresh(path) {
@@ -244,6 +270,7 @@ export class TreeView {
     } else {
       this._updateRovingTabindex()
     }
+    this._writeStorage()
   }
 
   _removeSubtree(path) {
@@ -278,6 +305,7 @@ export class TreeView {
     li.setAttribute('aria-expanded', 'false')
     this.expandedPaths.delete(path)
     this.container.dispatchEvent(new CustomEvent('tree:toggle', { detail: { path, expanded: false } }))
+    this._writeStorage()
   }
 
   toggle(path) {
@@ -298,6 +326,7 @@ export class TreeView {
           detail: { path: null, node: null, source },
         }))
       }
+      this._writeStorage()
       return
     }
 
@@ -314,6 +343,7 @@ export class TreeView {
         detail: { path, node, source },
       }))
     }
+    this._writeStorage()
   }
 
   _updateRovingTabindex() {
@@ -325,6 +355,45 @@ export class TreeView {
     for (const it of items) {
       it.setAttribute('tabindex', it === target ? '0' : '-1')
     }
+  }
+
+  _nodesAt(parentPath) {
+    const paths = this.childrenByPath.get(parentPath) ?? []
+    return paths.map((p) => this.nodesByPath.get(p)).filter(Boolean)
+  }
+
+  _ancestors(path) {
+    const parts = path.split('/')
+    const out = []
+    for (let i = 1; i < parts.length; i++) {
+      out.push(parts.slice(0, i).join('/'))
+    }
+    return out
+  }
+
+  _readStorage() {
+    if (!this.persistKey) return null
+    try {
+      const raw = localStorage.getItem(this.persistKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed || parsed.version !== 1) return null
+      return parsed
+    } catch (_) {
+      return null
+    }
+  }
+
+  _writeStorage() {
+    if (!this.persistKey) return
+    const payload = {
+      version: 1,
+      expanded: Array.from(this.expandedPaths),
+      selected: this.selectedPath,
+    }
+    try {
+      localStorage.setItem(this.persistKey, JSON.stringify(payload))
+    } catch (_) {}
   }
 
   _findItem(path) {
