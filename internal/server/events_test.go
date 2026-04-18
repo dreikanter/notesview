@@ -15,11 +15,11 @@ func TestSSEConnection(t *testing.T) {
 	testFile := filepath.Join(dir, "test.md")
 	os.WriteFile(testFile, []byte("# Test"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
-	srv := &Server{root: dir, sseHub: hub}
+	srv := &Server{root: dir, events: hub}
 
 	req := httptest.NewRequest("GET", "/events?watch=test.md", nil)
 	ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
@@ -30,7 +30,7 @@ func TestSSEConnection(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		srv.handleSSE(w, req)
+		srv.handleEvents(w, req)
 		close(done)
 	}()
 
@@ -46,10 +46,10 @@ func TestSSEConnection(t *testing.T) {
 
 func TestServerShutdownStopsHub(t *testing.T) {
 	dir := t.TempDir()
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 
-	srv := &Server{root: dir, sseHub: hub}
+	srv := &Server{root: dir, events: hub}
 	srv.Shutdown()
 
 	// After Shutdown, the done channel should be closed.
@@ -63,7 +63,7 @@ func TestServerShutdownStopsHub(t *testing.T) {
 
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
@@ -79,12 +79,12 @@ func TestSSEMultiClientBroadcast(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "shared.md"), []byte("# Shared"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
-	c1 := &sseClient{watchPath: "shared.md", events: make(chan string, 1)}
-	c2 := &sseClient{watchPath: "shared.md", events: make(chan string, 1)}
+	c1 := &Subscription{watchPath: "shared.md", events: make(chan string, 1)}
+	c2 := &Subscription{watchPath: "shared.md", events: make(chan string, 1)}
 	hub.addClient(c1)
 	hub.addClient(c2)
 	defer hub.removeClient(c1)
@@ -117,12 +117,12 @@ func TestSSESelectiveBroadcast(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("A"), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
-	clientA := &sseClient{watchPath: "a.md", events: make(chan string, 1)}
-	clientB := &sseClient{watchPath: "b.md", events: make(chan string, 1)}
+	clientA := &Subscription{watchPath: "a.md", events: make(chan string, 1)}
+	clientB := &Subscription{watchPath: "b.md", events: make(chan string, 1)}
 	hub.addClient(clientA)
 	hub.addClient(clientB)
 	defer hub.removeClient(clientA)
@@ -151,12 +151,12 @@ func TestSSEPerPathDebounce(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("A"), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
-	clientA := &sseClient{watchPath: "a.md", events: make(chan string, 1)}
-	clientB := &sseClient{watchPath: "b.md", events: make(chan string, 1)}
+	clientA := &Subscription{watchPath: "a.md", events: make(chan string, 1)}
+	clientB := &Subscription{watchPath: "b.md", events: make(chan string, 1)}
 	hub.addClient(clientA)
 	hub.addClient(clientB)
 	defer hub.removeClient(clientA)
@@ -189,11 +189,11 @@ func TestSSEClientCleanupOnDisconnect(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("# Test"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
-	srv := &Server{root: dir, sseHub: hub}
+	srv := &Server{root: dir, events: hub}
 
 	req := httptest.NewRequest("GET", "/events?watch=test.md", nil)
 	ctx, cancel := context.WithCancel(req.Context())
@@ -202,7 +202,7 @@ func TestSSEClientCleanupOnDisconnect(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		srv.handleSSE(w, req)
+		srv.handleEvents(w, req)
 		close(done)
 	}()
 
@@ -241,16 +241,16 @@ func TestSSENonBlockingSend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("data"), 0o644)
 
-	hub := NewSSEHub(dir, nil, nil)
+	hub := NewEventHub(dir, nil, nil)
 	hub.Start()
 	defer hub.Stop()
 
 	// Slow client: buffer is already full.
-	slow := &sseClient{watchPath: "test.md", events: make(chan string, 1)}
+	slow := &Subscription{watchPath: "test.md", events: make(chan string, 1)}
 	slow.events <- "stale"
 
 	// Fast client: buffer is empty.
-	fast := &sseClient{watchPath: "test.md", events: make(chan string, 1)}
+	fast := &Subscription{watchPath: "test.md", events: make(chan string, 1)}
 
 	hub.addClient(slow)
 	hub.addClient(fast)

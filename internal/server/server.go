@@ -19,7 +19,7 @@ type Server struct {
 	logger    *slog.Logger
 	renderer  *renderer.Renderer
 	index     *index.NoteIndex
-	sseHub    *SSEHub
+	events    *EventHub
 	templates *templateSet
 }
 
@@ -45,7 +45,7 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 		logger:    logger,
 		renderer:  renderer.NewRenderer(idx),
 		index:     idx,
-		sseHub:    NewSSEHub(root, logger, idx),
+		events:    NewEventHub(root, logger, idx),
 		templates: tpls,
 	}, nil
 }
@@ -65,7 +65,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /tags/{tag}", s.handleTagNotes)
 	mux.HandleFunc("POST /api/edit/{filepath...}", s.handleEdit)
 	mux.HandleFunc("GET /api/raw/{filepath...}", s.handleRaw)
-	mux.HandleFunc("GET /events", s.handleSSE)
+	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tree/list", s.handleTreeList)
 	mux.HandleFunc("GET /", s.handleRoot)
 
@@ -94,11 +94,11 @@ func rejectDirtyPaths(next http.Handler) http.Handler {
 }
 
 func (s *Server) StartWatcher() error {
-	return s.sseHub.Start()
+	return s.events.Start()
 }
 
-// Shutdown stops the SSE hub, closing the fsnotify watcher and draining
+// Shutdown stops the event hub, closing the fsnotify watcher and draining
 // connected clients.
 func (s *Server) Shutdown() {
-	s.sseHub.Stop()
+	s.events.Stop()
 }

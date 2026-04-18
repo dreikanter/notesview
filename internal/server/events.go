@@ -15,35 +15,35 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-type SSEHub struct {
+type EventHub struct {
 	root    string
 	logger  *slog.Logger
 	index   *index.NoteIndex
 	mu      sync.RWMutex
-	clients map[*sseClient]struct{}
+	clients map[*Subscription]struct{}
 	watcher *fsnotify.Watcher
 	done    chan struct{}
 }
 
-type sseClient struct {
+type Subscription struct {
 	watchPath string
 	events    chan string
 }
 
-func NewSSEHub(root string, logger *slog.Logger, idx *index.NoteIndex) *SSEHub {
+func NewEventHub(root string, logger *slog.Logger, idx *index.NoteIndex) *EventHub {
 	if logger == nil {
 		logger = logging.Discard()
 	}
-	return &SSEHub{
+	return &EventHub{
 		root:    root,
 		logger:  logger,
 		index:   idx,
-		clients: make(map[*sseClient]struct{}),
+		clients: make(map[*Subscription]struct{}),
 		done:    make(chan struct{}),
 	}
 }
 
-func (h *SSEHub) Start() error {
+func (h *EventHub) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -53,14 +53,14 @@ func (h *SSEHub) Start() error {
 	return nil
 }
 
-func (h *SSEHub) Stop() {
+func (h *EventHub) Stop() {
 	close(h.done)
 	if h.watcher != nil {
 		h.watcher.Close()
 	}
 }
 
-func (h *SSEHub) eventLoop() {
+func (h *EventHub) eventLoop() {
 	timers := make(map[string]*time.Timer)
 
 	for {
@@ -110,7 +110,7 @@ func (h *SSEHub) eventLoop() {
 	}
 }
 
-func (h *SSEHub) broadcast(absPath string) {
+func (h *EventHub) broadcast(absPath string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
@@ -127,7 +127,7 @@ func (h *SSEHub) broadcast(absPath string) {
 	}
 }
 
-func (h *SSEHub) addClient(c *sseClient) {
+func (h *EventHub) addClient(c *Subscription) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
@@ -142,7 +142,7 @@ func (h *SSEHub) addClient(c *sseClient) {
 	}
 }
 
-func (h *SSEHub) removeClient(c *sseClient) {
+func (h *EventHub) removeClient(c *Subscription) {
 	h.mu.Lock()
 	delete(h.clients, c)
 
@@ -170,7 +170,7 @@ func (h *SSEHub) removeClient(c *sseClient) {
 	}
 }
 
-func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -191,12 +191,12 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	client := &sseClient{
+	client := &Subscription{
 		watchPath: watchPath,
 		events:    make(chan string, 1),
 	}
-	s.sseHub.addClient(client)
-	defer s.sseHub.removeClient(client)
+	s.events.addClient(client)
+	defer s.events.removeClient(client)
 
 	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", toJSON(map[string]string{"type": "connected"}))
 	flusher.Flush()
