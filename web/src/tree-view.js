@@ -236,9 +236,14 @@ export class TreeView {
       if (!nextSet.has(p)) this._removeSubtree(p)
     }
 
+    let selectionWasFlipped = false
     for (const n of nextNodes) {
       const existing = this.nodesByPath.get(n.path)
       if (existing && existing.isDir !== n.isDir) {
+        if (this.selectedPath === n.path) {
+          this.selectedPath = null
+          selectionWasFlipped = true
+        }
         this._removeSubtree(n.path)
       }
     }
@@ -268,7 +273,7 @@ export class TreeView {
 
     this.childrenByPath.set(parentPath, next)
 
-    if (this.selectedPath && !this._findItem(this.selectedPath)) {
+    if ((this.selectedPath && !this._findItem(this.selectedPath)) || selectionWasFlipped) {
       this.selectedPath = null
       this.focusedPath = null
       this._updateRovingTabindex()
@@ -411,6 +416,7 @@ export class TreeView {
   destroy() {
     this.root.removeEventListener('keydown', this._onKeydown)
     this.root.removeEventListener('click', this._onClick)
+    if (this._typeaheadTimer) clearTimeout(this._typeaheadTimer)
     this.container.innerHTML = ''
   }
 

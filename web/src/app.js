@@ -16,12 +16,19 @@ function highlightIn(root) {
   })
 }
 
+let sidebar = null
+
 document.addEventListener('DOMContentLoaded', function () {
   highlightIn(document)
   wireSidebarToggle()
   restoreSidebarState()
-  mountSidebar()
+  sidebar = mountSidebar()
 })
+
+function decodeHref(href) {
+  if (href.startsWith('/view/')) return decodeURIComponent(href.slice('/view/'.length))
+  return ''
+}
 
 function wireSidebarToggle() {
   const btn = document.getElementById('sidebar-toggle')
@@ -93,6 +100,7 @@ window.selectTag = function(tag, skipPush) {
     swap: 'innerHTML',
     headers: { 'HX-Target': 'note-pane' },
   })
+  if (sidebar) sidebar.setWatchedNote('')
   const content = document.getElementById('tags-content')
   const disclosure = document.getElementById('tags-disclosure')
   if (content) content.style.display = ''
@@ -124,6 +132,7 @@ document.addEventListener('click', function(e) {
       headers: { 'HX-Target': 'note-pane' },
     })
     history.pushState({ type: action === 'selectDir' ? 'dir' : 'note', href }, '', href)
+    if (sidebar) sidebar.setWatchedNote(action === 'selectNote' ? decodeHref(href) : '')
   }
 })
 

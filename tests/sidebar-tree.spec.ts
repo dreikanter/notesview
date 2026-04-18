@@ -133,6 +133,21 @@ test.describe('Sidebar Tree (client-side TreeView)', () => {
     await expect(page.locator('#files-content')).toBeVisible()
   })
 
+  test('tag navigation stops watching the previous note', async ({ page }) => {
+    await page.goto('/view/README.md')
+    await page.click('#sidebar-toggle')
+    // Wait for sidebar to mount and open the initial EventSource for README.md
+    await page.waitForFunction(() => (window as any).__tvWatchedNote !== undefined)
+    const initial = await page.evaluate(() => (window as any).__tvWatchedNote as string)
+    expect(initial).toBe('README.md')
+    // Trigger a tag click
+    await page.locator('#tags-content a', { hasText: 'daily' }).click()
+    await expect(page.locator('#dir-listing')).toBeVisible()
+    const watched = await page.evaluate(() => (window as any).__tvWatchedNote as string)
+    // After navigating to a tag view, no note should be watched
+    expect(watched).toBe('')
+  })
+
   test('browser back navigates back and restores note pane content', async ({ page }) => {
     await page.goto('/view/README.md')
     await page.click('#sidebar-toggle')

@@ -332,6 +332,23 @@ describe('TreeView refresh / reconciliation', () => {
     expect(row.classList.contains('tv-item--file')).toBe(true)
     expect(tv.expandedPaths.has('thing')).toBe(false)
   })
+
+  it('refresh clears selection when the selected node isDir flips', async () => {
+    const state = { '': [{ name: 'thing', path: 'thing', isDir: true }], 'thing': [] }
+    const loader = vi.fn(async (p) => (state[p] || []).slice())
+    const tv = new TreeView(container, { loader })
+    await tv.ready
+    tv.select('thing')
+    expect(tv.selectedPath).toBe('thing')
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    state[''] = [{ name: 'thing', path: 'thing', isDir: false }]
+    await tv.refresh('')
+    expect(tv.selectedPath).toBeNull()
+    const row = container.querySelector('[data-path="thing"]')
+    expect(row.getAttribute('aria-selected')).toBe('false')
+    expect(events.some((e) => e.path === null)).toBe(true)
+  })
 })
 
 describe('TreeView refresh-during-load queue', () => {

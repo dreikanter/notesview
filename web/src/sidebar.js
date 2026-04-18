@@ -59,6 +59,7 @@ export function mountSidebar() {
   const openEventSource = (notePath) => {
     if (es) es.close()
     watchedNote = notePath || null
+    window.__tvWatchedNote = watchedNote || ''
     const esURL = '/events' + (notePath ? '?watch=' + encodeURIComponent(notePath) : '')
     es = new EventSource(esURL)
     es.addEventListener('dir-changed', (e) => {
@@ -108,5 +109,8 @@ export function mountSidebar() {
     openEventSource(isNote ? path : '')
   })
 
-  return tree
+  return {
+    tree,
+    setWatchedNote: (notePath) => openEventSource(notePath || ''),
+  }
 }
