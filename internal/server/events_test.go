@@ -16,7 +16,9 @@ func TestSSEConnection(t *testing.T) {
 	os.WriteFile(testFile, []byte("# Test"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	srv := &Server{root: dir, events: hub}
@@ -47,7 +49,9 @@ func TestSSEConnection(t *testing.T) {
 func TestServerShutdownStopsHub(t *testing.T) {
 	dir := t.TempDir()
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 
 	srv := &Server{root: dir, events: hub}
 	srv.Shutdown()
@@ -64,7 +68,9 @@ func TestServerShutdownStopsHub(t *testing.T) {
 func TestSSEHubClientCleanup(t *testing.T) {
 	dir := t.TempDir()
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	hub.mu.RLock()
@@ -80,7 +86,9 @@ func TestSSEMultiClientBroadcast(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "shared.md"), []byte("# Shared"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	c1 := &Subscription{watchPath: "shared.md", events: make(chan eventMsg, 1)}
@@ -118,7 +126,9 @@ func TestSSESelectiveBroadcast(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	clientA := &Subscription{watchPath: "a.md", events: make(chan eventMsg, 1)}
@@ -152,7 +162,9 @@ func TestSSEPerPathDebounce(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("B"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	clientA := &Subscription{watchPath: "a.md", events: make(chan eventMsg, 1)}
@@ -190,7 +202,9 @@ func TestSSEClientCleanupOnDisconnect(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("# Test"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	srv := &Server{root: dir, events: hub}
@@ -233,7 +247,9 @@ func TestSSENonBlockingSend(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "test.md"), []byte("data"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	// Slow client: buffer is already full.
@@ -320,7 +336,9 @@ func TestDirChangedOnNewSubdir(t *testing.T) {
 	dir := t.TempDir()
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	sub := &Subscription{watchPath: "", events: make(chan eventMsg, 4)}
@@ -349,7 +367,9 @@ func TestDirChangedEndpointEmitsEvent(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "a"), 0o755)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	srv := &Server{root: dir, events: hub}
@@ -381,7 +401,9 @@ func TestChangeEventStillDelivered(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "x.md"), []byte("a"), 0o644)
 
 	hub := NewEventHub(dir, nil, nil)
-	hub.Start()
+	if err := hub.Start(); err != nil {
+		t.Fatal(err)
+	}
 	defer hub.Stop()
 
 	sub := &Subscription{watchPath: "x.md", events: make(chan eventMsg, 4)}

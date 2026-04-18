@@ -23,12 +23,17 @@ func (s *Server) handleTreeList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := os.Stat(absPath); err != nil {
+	fi, err := os.Stat(absPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !fi.IsDir() {
+		http.Error(w, "not a directory: "+relPath, http.StatusBadRequest)
 		return
 	}
 

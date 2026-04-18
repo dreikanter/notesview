@@ -233,6 +233,22 @@ export class TreeView {
       return this.loadingPaths.get(path).promise
     }
 
+    const entry = { pendingRefresh: false }
+    const promise = this._doRefresh(path)
+    entry.promise = promise
+    this.loadingPaths.set(path, entry)
+
+    try {
+      await promise
+    } finally {
+      this.loadingPaths.delete(path)
+      if (entry.pendingRefresh && (path === this.rootPath || this.expandedPaths.has(path))) {
+        this.refresh(path)
+      }
+    }
+  }
+
+  async _doRefresh(path) {
     let nodes
     try {
       nodes = await this.loader(path)
@@ -240,7 +256,6 @@ export class TreeView {
       this.container.dispatchEvent(new CustomEvent('tree:error', { detail: { path, error: err } }))
       return
     }
-
     this._reconcile(path, nodes)
   }
 
@@ -290,6 +305,10 @@ export class TreeView {
     }
 
     this.childrenByPath.set(parentPath, next)
+
+    if (this.focusedPath && !this._findItem(this.focusedPath)) {
+      this.focusedPath = this._findItem(parentPath) ? parentPath : null
+    }
 
     if ((this.selectedPath && !this._findItem(this.selectedPath)) || selectionWasFlipped) {
       this.selectedPath = null

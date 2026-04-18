@@ -137,7 +137,7 @@ test.describe('Sidebar Tree (client-side TreeView)', () => {
     await page.goto('/view/README.md')
     await page.click('#sidebar-toggle')
     // Wait for sidebar to mount and open the initial EventSource for README.md
-    await page.waitForFunction(() => (window as any).__tvWatchedNote !== undefined)
+    await page.waitForFunction(() => (window as any).__tvWatchedNote === 'README.md')
     const initial = await page.evaluate(() => (window as any).__tvWatchedNote as string)
     expect(initial).toBe('README.md')
     // Trigger a tag click

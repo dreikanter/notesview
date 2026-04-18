@@ -28,10 +28,11 @@ type EventHub struct {
 	logger   *slog.Logger
 	index    *index.NoteIndex
 	mu       sync.RWMutex
-	timerMu  sync.Mutex
 	clients  map[*Subscription]struct{}
 	watcher  *fsnotify.Watcher
 	done     chan struct{}
+	timerMu  sync.Mutex
+	stopOnce sync.Once
 }
 
 type Subscription struct {
@@ -83,10 +84,14 @@ func (h *EventHub) watchRecursive(absDir string) error {
 }
 
 func (h *EventHub) Stop() {
-	close(h.done)
-	if h.watcher != nil {
-		h.watcher.Close()
-	}
+	h.stopOnce.Do(func() {
+		close(h.done)
+		if h.watcher != nil {
+			if err := h.watcher.Close(); err != nil {
+				h.logger.Warn("file watcher close failed", "err", err)
+			}
+		}
+	})
 }
 
 func (h *EventHub) eventLoop() {
@@ -124,8 +129,8 @@ func (h *EventHub) handleFSEvent(event fsnotify.Event, changeTimers, dirTimers m
 	if event.Op&fsnotify.Create != 0 {
 		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 			if name := filepath.Base(event.Name); !strings.HasPrefix(name, ".") {
-				if err := h.watcher.Add(event.Name); err != nil {
-					h.logger.Warn("watcher add (new dir) failed", "dir", event.Name, "err", err)
+				if err := h.watchRecursive(event.Name); err != nil {
+					h.logger.Warn("watcher add (new dir tree) failed", "dir", event.Name, "err", err)
 				}
 			}
 		}

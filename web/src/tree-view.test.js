@@ -362,6 +362,64 @@ describe('TreeView refresh / reconciliation', () => {
   })
 })
 
+describe('TreeView refresh coalescing', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+  })
+
+  it('concurrent refresh calls for the same path coalesce into one follow-up fetch', async () => {
+    let resolveRefresh
+    const refreshPromise = new Promise((r) => { resolveRefresh = r })
+    const calls = []
+    let bootstrapDone = false
+    const loader = vi.fn(async (path) => {
+      calls.push(path)
+      if (path === '') {
+        if (!bootstrapDone) {
+          bootstrapDone = true
+          return [{ name: 'a.md', path: 'a.md', isDir: false }]
+        }
+        // Block the first refresh call
+        if (calls.filter((c) => c === '').length === 2) {
+          await refreshPromise
+        }
+        return [{ name: 'a.md', path: 'a.md', isDir: false }]
+      }
+      return []
+    })
+    const tv = new TreeView(container, { loader })
+    await tv.ready
+    // Three concurrent refreshes; first one is in-flight (blocked), others should coalesce
+    const r1 = tv.refresh('')
+    const r2 = tv.refresh('')
+    const r3 = tv.refresh('')
+    resolveRefresh()
+    await Promise.all([r1, r2, r3])
+    await new Promise((r) => setTimeout(r, 0))
+    // Expected: 1 bootstrap + 1 in-flight refresh + at most 1 follow-up = ≤3
+    const rootCalls = calls.filter((c) => c === '').length
+    expect(rootCalls).toBeLessThanOrEqual(3)
+    expect(rootCalls).toBeGreaterThanOrEqual(2)
+  })
+
+  it('refresh clears stale focusedPath when focused node is removed', async () => {
+    const state = {
+      '': [{ name: 'x.md', path: 'x.md', isDir: false }],
+    }
+    const loader = vi.fn(async (p) => (state[p] || []).slice())
+    const tv = new TreeView(container, { loader })
+    await tv.ready
+    // Focus x.md manually
+    tv._focusPath('x.md')
+    expect(tv.focusedPath).toBe('x.md')
+    state[''] = []
+    await tv.refresh('')
+    expect(tv.focusedPath).toBeNull()
+  })
+})
+
 describe('TreeView refresh-during-load queue', () => {
   let container
   beforeEach(() => {

@@ -125,6 +125,20 @@ func TestTreeListPathTraversal(t *testing.T) {
 	}
 }
 
+func TestTreeListNotADirectory(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	// README.md is a file, not a directory.
+	req := httptest.NewRequest("GET", "/api/tree/list?path=README.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
 func TestTreeListEmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "empty"), 0o755)
