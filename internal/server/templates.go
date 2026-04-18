@@ -63,8 +63,9 @@ type NotePartialData struct {
 
 // SidebarPartialData is the render context for the sidebar tree.
 type SidebarPartialData struct {
-	Files *IndexCard // FILES section entries
-	Tags  *IndexCard // TAGS section entries
+	Files       *IndexCard  // FILES section entries (rendered empty for now)
+	Tags        *IndexCard  // TAGS section entries
+	InitialJSON template.JS // {"selectedPath": "<path>" | null} — consumed by TreeView
 }
 
 // DirListingData is the render context for the dir_listing partial,

@@ -15,6 +15,21 @@ import (
 	"github.com/dreikanter/notes-view/internal/renderer"
 )
 
+// buildInitialJSON returns a pre-encoded JSON object that the TreeView
+// component reads from the <script id="tv-initial"> on first render. The
+// selectedPath drives ancestor pre-expansion and selection. Empty string
+// means no selection (e.g., empty root, tags page).
+func buildInitialJSON(selectedPath string) template.JS {
+	payload := struct {
+		SelectedPath *string `json:"selectedPath"`
+	}{}
+	if selectedPath != "" {
+		payload.SelectedPath = &selectedPath
+	}
+	b, _ := json.Marshal(payload)
+	return template.JS(b)
+}
+
 // buildLayoutFields assembles the common chrome every full-page render needs.
 func (s *Server) buildLayoutFields(title, editPath string) layoutFields {
 	lf := layoutFields{
@@ -80,8 +95,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		HTML:         template.HTML(`<p class="text-gray-500 text-center py-8">No note selected.</p>`),
 		ViewHref:     "/",
 		Sidebar: SidebarPartialData{
-			Files: filesCard,
-			Tags:  tagsCard,
+			Files:       filesCard,
+			Tags:        tagsCard,
+			InitialJSON: buildInitialJSON(""),
 		},
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -179,8 +195,9 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		SSEWatch:     viewSSEWatch(reqPath),
 		ViewHref:     "/view/" + viewPath(reqPath),
 		Sidebar: SidebarPartialData{
-			Files: filesCard,
-			Tags:  tagsCard,
+			Files:       filesCard,
+			Tags:        tagsCard,
+			InitialJSON: buildInitialJSON(reqPath),
 		},
 	}
 
@@ -398,8 +415,9 @@ func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
 		HTML:         template.HTML(""),
 		ViewHref:     "/dir/" + viewPath(dirPath),
 		Sidebar: SidebarPartialData{
-			Files: filesCard,
-			Tags:  tagsCard,
+			Files:       filesCard,
+			Tags:        tagsCard,
+			InitialJSON: buildInitialJSON(dirPath),
 		},
 		DirListing: &DirListingData{Title: title, IndexCard: card},
 	}
@@ -432,8 +450,9 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 		layoutFields: s.buildLayoutFields("Tags", ""),
 		ViewHref:     "/tags",
 		Sidebar: SidebarPartialData{
-			Files: filesCard,
-			Tags:  card,
+			Files:       filesCard,
+			Tags:        card,
+			InitialJSON: buildInitialJSON(""),
 		},
 		DirListing: &DirListingData{Title: "Tags", IndexCard: card},
 	}
@@ -477,8 +496,9 @@ func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 		layoutFields: s.buildLayoutFields(tag, ""),
 		ViewHref:     "/tags/" + tagPath(tag),
 		Sidebar: SidebarPartialData{
-			Files: filesCard,
-			Tags:  tagsCard,
+			Files:       filesCard,
+			Tags:        tagsCard,
+			InitialJSON: buildInitialJSON(""),
 		},
 		DirListing: &DirListingData{Title: tag, IndexCard: card},
 	}

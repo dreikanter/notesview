@@ -475,3 +475,64 @@ func TestTagNotesHandlerUnknownTag(t *testing.T) {
 	}
 }
 
+func TestViewEmbedsInitialSelectedPath(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/view/README.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `id="tv-initial"`) {
+		t.Errorf("expected tv-initial script tag, got: %s", body)
+	}
+	if !strings.Contains(body, `"selectedPath":"README.md"`) {
+		t.Errorf("expected selectedPath=README.md in initial JSON, got: %s", body)
+	}
+}
+
+func TestDirEmbedsInitialSelectedPath(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dir/2026", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"selectedPath":"2026"`) {
+		t.Errorf("expected selectedPath=2026 in initial JSON, got: %s", body)
+	}
+}
+
+func TestRootEmbedsNullSelectedPath(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "note.md"), []byte("x"), 0o644)
+	srv, _ := NewServer(dir, "", nil)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"selectedPath":null`) {
+		t.Errorf("expected selectedPath=null at empty root, got: %s", body)
+	}
+}
+
+func TestTagsEmbedsNullSelectedPath(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/tags", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"selectedPath":null`) {
+		t.Errorf("expected selectedPath=null on tags page, got: %s", body)
+	}
+}
+
