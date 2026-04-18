@@ -184,3 +184,61 @@ describe('TreeView expand/collapse', () => {
     expect(tv.loadingPaths.size).toBe(0)
   })
 })
+
+describe('TreeView select', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+  })
+
+  it('select(path) flips aria-selected and emits tree:select', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    tv.select('readme.md', { source: 'api' })
+    const li = container.querySelector('[data-path="readme.md"]')
+    expect(li.getAttribute('aria-selected')).toBe('true')
+    expect(events).toEqual([{ path: 'readme.md', node: expect.any(Object), source: 'api' }])
+  })
+
+  it('select(path) clears previous selection', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    tv.select('a')
+    tv.select('readme.md')
+    expect(container.querySelector('[data-path="a"]').getAttribute('aria-selected')).toBe('false')
+    expect(container.querySelector('[data-path="readme.md"]').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('select with source=silent does not emit tree:select', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    tv.select('readme.md', { source: 'silent' })
+    expect(events.length).toBe(0)
+    expect(container.querySelector('[data-path="readme.md"]').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('select sets keyboard focus (tabindex=0 on selected, -1 elsewhere)', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    tv.select('readme.md')
+    const selected = container.querySelector('[data-path="readme.md"]')
+    const others = container.querySelectorAll('[role="treeitem"]:not([data-path="readme.md"])')
+    expect(selected.getAttribute('tabindex')).toBe('0')
+    for (const o of others) expect(o.getAttribute('tabindex')).toBe('-1')
+  })
+
+  it('select(null) clears selection and tabindex rests on first node', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    tv.select('readme.md')
+    tv.select(null)
+    expect(container.querySelectorAll('[aria-selected="true"]').length).toBe(0)
+    const first = container.querySelector('[role="treeitem"]')
+    expect(first.getAttribute('tabindex')).toBe('0')
+  })
+})

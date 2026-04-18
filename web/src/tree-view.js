@@ -76,6 +76,7 @@ export class TreeView {
       ul.appendChild(this._buildItem(node, baseLevel + 1))
     }
     parentEl.appendChild(ul)
+    this._updateRovingTabindex()
   }
 
   _buildItem(node, level) {
@@ -199,6 +200,49 @@ export class TreeView {
 
   toggle(path) {
     return this.expandedPaths.has(path) ? this.collapse(path) : this.expand(path)
+  }
+
+  select(path, options = {}) {
+    const source = options.source ?? 'api'
+    const prev = this.selectedPath ? this._findItem(this.selectedPath) : null
+    if (prev) prev.setAttribute('aria-selected', 'false')
+
+    if (path == null) {
+      this.selectedPath = null
+      this.focusedPath = null
+      this._updateRovingTabindex()
+      if (source !== 'silent') {
+        this.container.dispatchEvent(new CustomEvent('tree:select', {
+          detail: { path: null, node: null, source },
+        }))
+      }
+      return
+    }
+
+    const li = this._findItem(path)
+    if (!li) return
+    li.setAttribute('aria-selected', 'true')
+    this.selectedPath = path
+    this.focusedPath = path
+    this._updateRovingTabindex()
+
+    if (source !== 'silent') {
+      const node = this.nodesByPath.get(path) ?? null
+      this.container.dispatchEvent(new CustomEvent('tree:select', {
+        detail: { path, node, source },
+      }))
+    }
+  }
+
+  _updateRovingTabindex() {
+    const items = this.root.querySelectorAll('[role="treeitem"]')
+    let target = null
+    if (this.focusedPath) target = this._findItem(this.focusedPath)
+    if (!target && this.selectedPath) target = this._findItem(this.selectedPath)
+    if (!target && items.length) target = items[0]
+    for (const it of items) {
+      it.setAttribute('tabindex', it === target ? '0' : '-1')
+    }
   }
 
   _findItem(path) {
