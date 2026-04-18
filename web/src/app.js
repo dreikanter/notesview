@@ -112,8 +112,6 @@ var pendingScrollToSelected = false;
 // --- Directory navigation ---
 
 window.selectDir = function(href, skipPush, fromSidebar) {
-  var dirPath = href.replace(/^\/dir\//, '');
-  setLS('filesDir', decodeURIComponent(dirPath));
   setLS('selected', href);
   if (!fromSidebar) pendingScrollToSelected = true;
 
@@ -127,11 +125,18 @@ window.selectDir = function(href, skipPush, fromSidebar) {
     headers: { 'HX-Target': 'note-pane' },
   });
 
-  // Load tree in sidebar files section
-  htmx.ajax('GET', href, {
-    target: '#files-content',
-    swap: 'innerHTML',
-  });
+  // Sidebar tree manipulation is the chevron's job. A label click
+  // originating inside the sidebar leaves the tree alone so the clicked
+  // item stays exactly where the cursor is. Navigations from the main
+  // pane (or popstate) still resync the sidebar to the new location.
+  if (!fromSidebar) {
+    var dirPath = href.replace(/^\/dir\//, '');
+    setLS('filesDir', decodeURIComponent(dirPath));
+    htmx.ajax('GET', href, {
+      target: '#files-content',
+      swap: 'innerHTML',
+    });
+  }
 
   // Ensure files section is visible
   var content = document.getElementById('files-content');
