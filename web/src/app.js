@@ -108,22 +108,38 @@ function markSelected(selector) {
 // --- Directory navigation ---
 
 window.selectDir = function(href, skipPush) {
-  var dirPath = href.replace(/^\/dir\//, '');
-  setLS('filesDir', decodeURIComponent(dirPath));
-  setLS('selected', href);
+  var dirPath = decodeURIComponent(href.replace(/^\/dir\//, ''));
+  var targetPath = dirPath;
+
+  // On a click (not a popstate restore), apply tree-view toggle: if the
+  // clicked dir is already expanded — meaning it matches the current
+  // filesDir or is an ancestor of it — collapse by targeting its parent.
+  if (!skipPush) {
+    var currentDir = getLS('filesDir', '');
+    var isExpanded = dirPath === currentDir ||
+      (dirPath !== '' && currentDir.indexOf(dirPath + '/') === 0);
+    if (isExpanded) {
+      var slash = dirPath.lastIndexOf('/');
+      targetPath = slash < 0 ? '' : dirPath.substring(0, slash);
+    }
+  }
+
+  var targetHref = '/dir/' + encodePath(targetPath);
+  setLS('filesDir', targetPath);
+  setLS('selected', targetHref);
 
   // Push browser URL
-  if (!skipPush) history.pushState({ type: 'dir', href: href }, '', href);
+  if (!skipPush) history.pushState({ type: 'dir', href: targetHref }, '', targetHref);
 
   // Load listing in main panel
-  htmx.ajax('GET', href, {
+  htmx.ajax('GET', targetHref, {
     target: '#note-pane',
     swap: 'innerHTML',
     headers: { 'HX-Target': 'note-pane' },
   });
 
   // Load tree in sidebar files section
-  htmx.ajax('GET', href, {
+  htmx.ajax('GET', targetHref, {
     target: '#files-content',
     swap: 'innerHTML',
   });

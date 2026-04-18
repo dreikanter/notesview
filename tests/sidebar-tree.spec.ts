@@ -71,6 +71,28 @@ test.describe('Sidebar Tree Navigation', () => {
     await expect(filesContent.locator('a', { hasText: 'day-two.md' })).toBeVisible();
   });
 
+  test('clicking an expanded directory collapses it', async ({ page }) => {
+    await page.goto('/view/README.md');
+    await page.click('#sidebar-toggle');
+
+    const filesContent = page.locator('#files-content');
+
+    // Expand journal
+    await filesContent.locator('a', { hasText: 'journal' }).click();
+    await expect(filesContent.locator('a', { hasText: 'day-one.md' })).toBeVisible();
+
+    // Click journal again — should collapse (target becomes root)
+    await filesContent.locator('a', { hasText: 'journal' }).click();
+
+    // Children gone, journal and its root-level siblings still visible
+    await expect(filesContent.locator('a', { hasText: 'day-one.md' })).toHaveCount(0);
+    await expect(filesContent.locator('a', { hasText: 'journal' })).toBeVisible();
+    await expect(filesContent.locator('a', { hasText: 'projects' })).toBeVisible();
+
+    // URL reflects collapse to root listing
+    await expect(page).toHaveURL(/\/dir\/?$/);
+  });
+
   test('clicking a note opens it in main panel', async ({ page }) => {
     await page.goto('/view/README.md');
     await page.click('#sidebar-toggle');
