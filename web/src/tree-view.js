@@ -52,6 +52,9 @@ export class TreeView {
     this.root.setAttribute('role', 'tree')
     this.container.appendChild(this.root)
 
+    this._onKeydown = (e) => this._handleKeydown(e)
+    this.root.addEventListener('keydown', this._onKeydown)
+
     this.ready = this._bootstrap()
   }
 
@@ -401,6 +404,74 @@ export class TreeView {
   }
 
   destroy() {
+    this.root.removeEventListener('keydown', this._onKeydown)
     this.container.innerHTML = ''
+  }
+
+  _handleKeydown(e) {
+    const li = e.target.closest('[role="treeitem"]')
+    if (!li) return
+    const path = li.getAttribute('data-path')
+
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); this._focusRelative(path, 1); return
+      case 'ArrowUp':   e.preventDefault(); this._focusRelative(path, -1); return
+      case 'ArrowRight': e.preventDefault(); this._arrowRight(path, li); return
+      case 'ArrowLeft':  e.preventDefault(); this._arrowLeft(path, li); return
+      case 'Home': e.preventDefault(); this._focusEdge('first'); return
+      case 'End':  e.preventDefault(); this._focusEdge('last'); return
+    }
+  }
+
+  _visibleItems() {
+    return Array.from(this.root.querySelectorAll('[role="treeitem"]'))
+  }
+
+  _focusPath(path) {
+    if (!path) return
+    const li = this._findItem(path)
+    if (!li) return
+    this.focusedPath = path
+    this._updateRovingTabindex()
+    li.focus()
+  }
+
+  _focusRelative(fromPath, delta) {
+    const items = this._visibleItems()
+    const idx = items.findIndex((it) => it.getAttribute('data-path') === fromPath)
+    if (idx === -1) return
+    const next = items[idx + delta]
+    if (next) this._focusPath(next.getAttribute('data-path'))
+  }
+
+  _arrowRight(path, li) {
+    if (!li.classList.contains(this._cls('item--dir'))) return
+    if (!this.expandedPaths.has(path)) {
+      this.focusedPath = path
+      this._updateRovingTabindex()
+      this.expand(path)
+      return
+    }
+    const childUl = this._childUl(path)
+    const firstChild = childUl?.querySelector('[role="treeitem"]')
+    if (firstChild) this._focusPath(firstChild.getAttribute('data-path'))
+  }
+
+  _arrowLeft(path, li) {
+    if (li.classList.contains(this._cls('item--dir')) && this.expandedPaths.has(path)) {
+      this.collapse(path)
+      this.focusedPath = path
+      this._updateRovingTabindex()
+      return
+    }
+    const parent = li.parentElement?.closest('[role="treeitem"]')
+    if (parent) this._focusPath(parent.getAttribute('data-path'))
+  }
+
+  _focusEdge(which) {
+    const items = this._visibleItems()
+    if (!items.length) return
+    const target = which === 'first' ? items[0] : items[items.length - 1]
+    this._focusPath(target.getAttribute('data-path'))
   }
 }

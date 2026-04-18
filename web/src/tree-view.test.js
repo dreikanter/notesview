@@ -472,3 +472,116 @@ describe('TreeView persistence', () => {
     expect(tv.selectedPath).toBeNull()
   })
 })
+
+describe('TreeView keyboard — arrows, Home, End', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+  })
+
+  function press(el, key) {
+    const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    el.dispatchEvent(ev)
+    return ev
+  }
+
+  it('ArrowDown moves focus to next visible node', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const first = container.querySelector('[data-path="a"]')
+    first.focus()
+    press(first, 'ArrowDown')
+    expect(tv.focusedPath).toBe('b')
+    expect(container.querySelector('[data-path="b"]').getAttribute('tabindex')).toBe('0')
+  })
+
+  it('ArrowUp moves focus to previous visible node', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const readme = container.querySelector('[data-path="readme.md"]')
+    readme.focus()
+    press(readme, 'ArrowUp')
+    expect(tv.focusedPath).toBe('b')
+  })
+
+  it('ArrowRight on collapsed dir expands it', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const a = container.querySelector('[data-path="a"]')
+    a.focus()
+    press(a, 'ArrowRight')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(tv.expandedPaths.has('a')).toBe(true)
+    // Focus stays on a
+    expect(tv.focusedPath).toBe('a')
+  })
+
+  it('ArrowRight on expanded dir moves focus to first child', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    await tv.expand('a')
+    const a = container.querySelector('[data-path="a"]')
+    a.focus()
+    press(a, 'ArrowRight')
+    expect(tv.focusedPath).toBe('a/inner.md')
+  })
+
+  it('ArrowLeft on expanded dir collapses it', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    await tv.expand('a')
+    const a = container.querySelector('[data-path="a"]')
+    a.focus()
+    press(a, 'ArrowLeft')
+    expect(tv.expandedPaths.has('a')).toBe(false)
+    expect(tv.focusedPath).toBe('a')
+  })
+
+  it('ArrowLeft on child moves focus to parent', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    await tv.expand('a')
+    const inner = container.querySelector('[data-path="a/inner.md"]')
+    inner.focus()
+    press(inner, 'ArrowLeft')
+    expect(tv.focusedPath).toBe('a')
+  })
+
+  it('Home focuses the first visible node', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const readme = container.querySelector('[data-path="readme.md"]')
+    readme.focus()
+    press(readme, 'Home')
+    expect(tv.focusedPath).toBe('a')
+  })
+
+  it('End focuses the last visible node', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const a = container.querySelector('[data-path="a"]')
+    a.focus()
+    press(a, 'End')
+    expect(tv.focusedPath).toBe('readme.md')
+  })
+
+  it('arrow keys preventDefault to stop page scroll', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const a = container.querySelector('[data-path="a"]')
+    a.focus()
+    const ev = press(a, 'ArrowDown')
+    expect(ev.defaultPrevented).toBe(true)
+  })
+
+  it('exactly one treeitem has tabindex=0 at all times', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const first = container.querySelector('[data-path="a"]')
+    first.focus()
+    press(first, 'ArrowDown')
+    const zeros = container.querySelectorAll('[role="treeitem"][tabindex="0"]')
+    expect(zeros.length).toBe(1)
+  })
+})
