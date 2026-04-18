@@ -49,6 +49,7 @@ export function mountSidebar() {
     }),
     initial,
     persistKey: 'notesview.tree',
+    rowHref: (node) => (node.isDir ? '/dir/' : '/view/') + encodePath(node.path),
   })
 
   // One EventSource per page, reopened whenever the watched note path changes.

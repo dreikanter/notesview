@@ -11,6 +11,12 @@
 //   tv.scrollTo(path, { block })
 //   tv.destroy()
 //
+// Options:
+//   rowHref(node) => string: returns a URL so icon+label are wrapped in
+//     an <a href tabindex=-1>. Plain left-click is intercepted by the
+//     component's click handler; modifier/middle/right clicks fall through
+//     to the browser for new-tab / context-menu affordances.
+//
 // Events dispatched on `container`:
 //   tree:select { path, node, source }
 //   tree:toggle { path, expanded }
@@ -34,6 +40,7 @@ export class TreeView {
     this.rootPath = options.rootPath ?? ''
     this.renderLabel = options.renderLabel
     this.renderIcon = options.renderIcon
+    this.rowHref = options.rowHref
     this.classPrefix = options.classPrefix ?? 'tv-'
 
     this.persistKey = options.persistKey
@@ -139,6 +146,14 @@ export class TreeView {
       row.appendChild(spacer)
     }
 
+    const href = typeof this.rowHref === 'function' ? this.rowHref(node) : null
+    const link = document.createElement(href ? 'a' : 'span')
+    link.className = `${this._cls('link')} flex-1 min-w-0 flex items-center gap-2 no-underline text-blue-600`
+    if (href) {
+      link.setAttribute('href', href)
+      link.setAttribute('tabindex', '-1')
+    }
+
     const icon = document.createElement('span')
     icon.className = `${this._cls('icon')} flex-shrink-0`
     if (typeof this.renderIcon === 'function') {
@@ -148,10 +163,10 @@ export class TreeView {
     } else {
       icon.textContent = node.isDir ? '\uD83D\uDCC1' : '\uD83D\uDCC4'
     }
-    row.appendChild(icon)
+    link.appendChild(icon)
 
     const label = document.createElement('span')
-    label.className = `${this._cls('label')} truncate min-w-0 text-blue-600`
+    label.className = `${this._cls('label')} truncate min-w-0`
     if (typeof this.renderLabel === 'function') {
       const result = this.renderLabel(node)
       if (typeof result === 'string') label.textContent = result
@@ -159,7 +174,9 @@ export class TreeView {
     } else {
       label.textContent = node.name
     }
-    row.appendChild(label)
+    link.appendChild(label)
+
+    row.appendChild(link)
 
     li.appendChild(row)
     li.style.paddingLeft = `calc(var(--tv-depth) * 1rem)`
@@ -491,7 +508,13 @@ export class TreeView {
       return
     }
     const li = e.target.closest('[role="treeitem"]')
-    if (li) this.select(li.getAttribute('data-path'), { source: 'click' })
+    if (!li) return
+    // Let the browser handle non-primary clicks and modifier-clicks so
+    // Cmd/Ctrl+click (new tab), middle-click (new tab), and modifier clicks
+    // on an <a href> inside the row work natively.
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    e.preventDefault()
+    this.select(li.getAttribute('data-path'), { source: 'click' })
   }
 
   _visibleItems() {

@@ -734,3 +734,82 @@ describe('TreeView mouse clicks', () => {
     expect(tv.focusedPath).toBe('a')
   })
 })
+
+describe('TreeView rowHref option', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+  })
+
+  it('wraps icon+label in <a href> when rowHref is provided', async () => {
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      rowHref: (n) => (n.isDir ? '/dir/' : '/view/') + n.path,
+    })
+    await tv.ready
+    const li = container.querySelector('[data-path="readme.md"]')
+    const link = li.querySelector('a.tv-link')
+    expect(link).toBeTruthy()
+    expect(link.getAttribute('href')).toBe('/view/readme.md')
+    expect(link.getAttribute('tabindex')).toBe('-1')
+    expect(link.querySelector('.tv-icon')).toBeTruthy()
+    expect(link.querySelector('.tv-label')).toBeTruthy()
+  })
+
+  it('falls back to <span> when rowHref is not provided', async () => {
+    const tv = new TreeView(container, { loader: makeLoader(nested) })
+    await tv.ready
+    const li = container.querySelector('[data-path="readme.md"]')
+    expect(li.querySelector('a.tv-link')).toBeNull()
+    expect(li.querySelector('.tv-link')).toBeTruthy() // span wrapper
+  })
+
+  it('plain left-click is intercepted (preventDefault, emits tree:select)', async () => {
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      rowHref: (n) => '/view/' + n.path,
+    })
+    await tv.ready
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    const link = container.querySelector('[data-path="readme.md"] a.tv-link')
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+    link.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(true)
+    expect(events.length).toBe(1)
+    expect(events[0].path).toBe('readme.md')
+  })
+
+  it('Cmd/Ctrl+click is NOT intercepted (browser handles new-tab navigation)', async () => {
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      rowHref: (n) => '/view/' + n.path,
+    })
+    await tv.ready
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    const link = container.querySelector('[data-path="readme.md"] a.tv-link')
+    const ev = new MouseEvent('click', {
+      bubbles: true, cancelable: true, button: 0, metaKey: true,
+    })
+    link.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(false)
+    expect(events.length).toBe(0)
+  })
+
+  it('middle-click (button 1) is NOT intercepted', async () => {
+    const tv = new TreeView(container, {
+      loader: makeLoader(nested),
+      rowHref: (n) => '/view/' + n.path,
+    })
+    await tv.ready
+    const events = []
+    container.addEventListener('tree:select', (e) => events.push(e.detail))
+    const link = container.querySelector('[data-path="readme.md"] a.tv-link')
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 1 })
+    link.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(false)
+    expect(events.length).toBe(0)
+  })
+})

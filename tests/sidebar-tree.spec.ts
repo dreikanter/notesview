@@ -184,4 +184,30 @@ test.describe('Sidebar Tree (client-side TreeView)', () => {
     await page.keyboard.press('Enter')
     await expect(journal).toHaveAttribute('aria-expanded', 'true')
   })
+
+  test('row has <a href> for icon+label and cursor reflects link', async ({ page }) => {
+    await page.goto('/view/README.md')
+    await page.click('#sidebar-toggle')
+    const journalLink = page.locator('#sidebar-tree [data-path="journal"] a.tv-link')
+    await expect(journalLink).toHaveAttribute('href', '/dir/journal')
+    await expect(journalLink).toHaveAttribute('tabindex', '-1')
+  })
+
+  test('Ctrl+click on a note does not trigger tree:select (falls through to browser)', async ({ page }) => {
+    await page.goto('/view/README.md')
+    await page.click('#sidebar-toggle')
+    await page.locator('#sidebar-tree [data-path="journal"] .tv-toggle').click()
+    const link = page.locator('#sidebar-tree [data-path="journal/day-one.md"] a.tv-link')
+    // Intercept tree:select events on the container
+    await page.evaluate(() => {
+      const container = document.getElementById('sidebar-tree')
+      ;(window as any).__treeSelectCount = 0
+      container?.addEventListener('tree:select', () => { (window as any).__treeSelectCount++ })
+    })
+    await link.click({ modifiers: ['Control'] })
+    const count = await page.evaluate(() => (window as any).__treeSelectCount)
+    expect(count).toBe(0)
+    // URL should not have changed to the note (no HTMX navigation triggered)
+    await expect(page).toHaveURL(/\/view\/README\.md/)
+  })
 })
