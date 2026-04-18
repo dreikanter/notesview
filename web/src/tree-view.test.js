@@ -333,3 +333,64 @@ describe('TreeView refresh / reconciliation', () => {
     expect(tv.expandedPaths.has('thing')).toBe(false)
   })
 })
+
+describe('TreeView refresh-during-load queue', () => {
+  let container
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="host"></div>'
+    container = document.getElementById('host')
+  })
+
+  it('refresh while expand is in flight fires exactly one follow-up fetch', async () => {
+    let resolveFirst
+    const firstPromise = new Promise((r) => { resolveFirst = r })
+    const calls = []
+    const loader = vi.fn(async (path) => {
+      calls.push(path)
+      if (path === '') return [{ name: 'a', path: 'a', isDir: true }]
+      if (path === 'a' && calls.filter((c) => c === 'a').length === 1) {
+        await firstPromise
+        return [{ name: 'x.md', path: 'a/x.md', isDir: false }]
+      }
+      return [{ name: 'y.md', path: 'a/y.md', isDir: false }]
+    })
+    const tv = new TreeView(container, { loader })
+    await tv.ready
+
+    const expandP = tv.expand('a')
+    // While the first load is blocked, ask for a refresh
+    const refreshP = tv.refresh('a')
+    resolveFirst()
+    await Promise.all([expandP, refreshP])
+    // Allow the queued follow-up to complete
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(calls.filter((c) => c === 'a').length).toBe(2)
+    expect(container.querySelector('[data-path="a/y.md"]')).toBeTruthy()
+  })
+
+  it('multiple refreshes during a single in-flight load coalesce to one follow-up', async () => {
+    let resolveFirst
+    const firstPromise = new Promise((r) => { resolveFirst = r })
+    const calls = []
+    const loader = vi.fn(async (path) => {
+      calls.push(path)
+      if (path === '') return [{ name: 'a', path: 'a', isDir: true }]
+      if (calls.filter((c) => c === 'a').length === 1) {
+        await firstPromise
+        return [{ name: 'x.md', path: 'a/x.md', isDir: false }]
+      }
+      return [{ name: 'z.md', path: 'a/z.md', isDir: false }]
+    })
+    const tv = new TreeView(container, { loader })
+    await tv.ready
+    const p = tv.expand('a')
+    tv.refresh('a')
+    tv.refresh('a')
+    tv.refresh('a')
+    resolveFirst()
+    await p
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls.filter((c) => c === 'a').length).toBe(2)
+  })
+})

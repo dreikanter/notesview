@@ -175,7 +175,7 @@ export class TreeView {
   }
 
   async refresh(path) {
-    if (path !== this.rootPath && !this.expandedPaths.has(path)) return
+    if (path !== this.rootPath && !this.expandedPaths.has(path) && !this.loadingPaths.has(path)) return
     if (this.loadingPaths.has(path)) {
       this.loadingPaths.get(path).pendingRefresh = true
       return this.loadingPaths.get(path).promise
