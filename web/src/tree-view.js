@@ -163,6 +163,7 @@ export class TreeView {
 
     const icon = document.createElement('span')
     icon.className = `${this._cls('icon')} flex-shrink-0 inline-flex items-center`
+    icon.setAttribute('aria-hidden', 'true')
     if (typeof this.renderIcon === 'function') {
       const result = this.renderIcon(node)
       if (typeof result === 'string') icon.textContent = result
