@@ -137,15 +137,13 @@ html.sidebar-open #note-pane {
   }
 
   .task-checked {
-    @apply inline-flex items-center justify-center w-4 h-4 bg-green-700
-           dark:bg-green-600 text-white rounded-sm text-[11px] font-bold
-           align-middle mr-0.5 flex-shrink-0;
+    @apply inline-block w-4 h-4 align-middle mr-0.5 flex-shrink-0
+           text-green-700 dark:text-green-600;
   }
 
   .task-unchecked {
-    @apply inline-block w-4 h-4 border-2 border-gray-300 dark:border-gray-600
-           rounded-sm align-middle mr-0.5 bg-white dark:bg-gray-800
-           flex-shrink-0;
+    @apply inline-block w-4 h-4 align-middle mr-0.5 flex-shrink-0
+           text-gray-400 dark:text-gray-500;
   }
 
   .task-tag {

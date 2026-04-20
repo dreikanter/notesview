@@ -5,18 +5,20 @@ import (
 	"strings"
 )
 
+const (
+	svgTaskUnchecked = `<svg class="task-unchecked" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>`
+	svgTaskChecked   = `<svg class="task-checked" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>`
+)
+
 // GFM converts [ ] and [x] to checkbox inputs; we replace those rendered forms.
 // [+] is not a GFM task marker so it passes through as literal text.
 var taskPatterns = []struct {
 	marker  string
 	replace string
 }{
-	// GFM unchecked checkbox → task-unchecked span
-	{`<input disabled="" type="checkbox"> `, `<span class="task-unchecked"></span> `},
-	// GFM checked checkbox → task-checked span (fallback, in case [x] is used)
-	{`<input checked="" disabled="" type="checkbox"> `, `<span class="task-checked">&#10003;</span> `},
-	// [+] passes through goldmark as literal text
-	{"[+] ", `<span class="task-checked">&#10003;</span> `},
+	{`<input disabled="" type="checkbox"> `, svgTaskUnchecked + ` `},
+	{`<input checked="" disabled="" type="checkbox"> `, svgTaskChecked + ` `},
+	{"[+] ", svgTaskChecked + ` `},
 }
 
 var dailyPattern = regexp.MustCompile(`\[daily\]\s*`)
