@@ -38,6 +38,7 @@ func NewRenderer(idx *index.NoteIndex) *Renderer {
 			extension.GFM,
 			meta.Meta,
 			NoteLinkExtension,
+			TaskCheckBoxExtension,
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),

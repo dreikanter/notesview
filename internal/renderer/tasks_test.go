@@ -13,7 +13,7 @@ func TestTaskSyntax(t *testing.T) {
 	}{
 		{
 			"completed task",
-			"- [+] Done item",
+			"- [x] Done item",
 			[]string{`class="task-checked"`, "Done item"},
 		},
 		{

@@ -19,7 +19,7 @@ func TestIntegrationSmoke(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755)
 	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Welcome\n\nHello world.\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"),
-		[]byte("---\ntitle: Daily Todo\ntags: [todo]\n---\n# Daily Todo\n\n- [+] Done task\n- [ ] Pending task\n- [daily] Routine\n\nSee [readme](../../README.md) and note://20260331_9201.\n"), 0o644)
+		[]byte("---\ntitle: Daily Todo\ntags: [todo]\n---\n# Daily Todo\n\n- [x] Done task\n- [ ] Pending task\n- [daily] Routine\n\nSee [readme](../../README.md) and note://20260331_9201.\n"), 0o644)
 
 	srv, err := server.NewServer(dir, "", nil)
 	if err != nil {
