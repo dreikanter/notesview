@@ -135,14 +135,14 @@ export class TreeView {
     if (node.isDir) {
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = `${this._cls('toggle')} flex items-center justify-center w-8 flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-pointer bg-transparent border-0 p-0`
+      btn.className = `${this._cls('toggle')} flex items-center justify-center w-4 flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-pointer bg-transparent border-0 p-0`
       btn.setAttribute('tabindex', '-1')
       btn.setAttribute('aria-hidden', 'true')
       btn.textContent = '\u25B8'
       row.appendChild(btn)
     } else {
       const spacer = document.createElement('span')
-      spacer.className = `${this._cls('toggle-spacer')} w-8 flex-shrink-0`
+      spacer.className = `${this._cls('toggle-spacer')} w-4 flex-shrink-0`
       row.appendChild(spacer)
     }
 
@@ -155,13 +155,15 @@ export class TreeView {
     }
 
     const icon = document.createElement('span')
-    icon.className = `${this._cls('icon')} flex-shrink-0`
+    icon.className = `${this._cls('icon')} flex-shrink-0 inline-flex items-center`
     if (typeof this.renderIcon === 'function') {
       const result = this.renderIcon(node)
       if (typeof result === 'string') icon.textContent = result
       else if (result instanceof Node) icon.appendChild(result)
     } else {
-      icon.textContent = node.isDir ? '\uD83D\uDCC1' : '\uD83D\uDCC4'
+      icon.innerHTML = node.isDir
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>'
     }
     link.appendChild(icon)
 
