@@ -137,13 +137,15 @@ html.sidebar-open #note-pane {
   }
 
   .task-checked {
-    @apply inline-block w-4 h-4 align-middle mr-0.5 flex-shrink-0
+    @apply inline-block w-[1em] h-[1em] mr-[0.25em]
            text-green-700 dark:text-green-600;
+    vertical-align: -0.125em;
   }
 
   .task-unchecked {
-    @apply inline-block w-4 h-4 align-middle mr-0.5 flex-shrink-0
+    @apply inline-block w-[1em] h-[1em] mr-[0.25em]
            text-gray-400 dark:text-gray-500;
+    vertical-align: -0.125em;
   }
 
   .task-tag {
