@@ -1,8 +1,8 @@
 {{ define "dir_listing" }}
-<div id="dir-listing" class="mx-auto max-w-[900px] border border-gray-200 rounded-md bg-white">
+<div id="dir-listing" class="mx-auto max-w-[900px] border border-gray-200 dark:border-gray-800 rounded-md bg-white dark:bg-gray-900">
   {{ if .Title }}
-  <header class="flex items-center px-6 py-3 border-b border-gray-200">
-    <span class="text-sm text-gray-500 font-medium truncate">{{ .Title }}</span>
+  <header class="flex items-center px-6 py-3 border-b border-gray-200 dark:border-gray-800">
+    <span class="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">{{ .Title }}</span>
   </header>
   {{ end }}
   <div>

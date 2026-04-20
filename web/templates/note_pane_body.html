@@ -1,18 +1,18 @@
 {{ define "note_pane_body" }}
 <article
   id="note-card"
-  class="note-card mx-auto max-w-[900px] border border-gray-200 rounded-md bg-white max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4"
+  class="note-card mx-auto max-w-[900px] border border-gray-200 dark:border-gray-800 rounded-md bg-white dark:bg-gray-900 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4"
   data-note-path="{{ .NotePath }}">
   {{ if .NotePath }}
-  <header class="flex items-center justify-between px-6 py-3 border-b border-gray-200 max-md:px-4 max-[480px]:px-3">
-    <span class="text-sm text-gray-500 font-medium truncate">{{ .NoteTitle }}</span>
+  <header class="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-800 max-md:px-4 max-[480px]:px-3">
+    <span class="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">{{ .NoteTitle }}</span>
     {{ if .EditHref }}
     <button
       type="button"
       hx-post="{{ .EditHref }}"
       hx-swap="none"
       aria-label="Edit note"
-      class="bg-transparent border-0 cursor-pointer p-1.5 text-gray-400 rounded-md leading-none flex-shrink-0 hover:bg-gray-50 hover:text-gray-700">
+      class="bg-transparent border-0 cursor-pointer p-1.5 text-gray-400 dark:text-gray-500 rounded-md leading-none flex-shrink-0 hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
     </button>
     {{ end }}
@@ -21,18 +21,18 @@
   <div class="px-6 py-6 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
     {{ with .Note }}
     {{ if or .Title .Description .Tags }}
-    <div class="pb-4 mb-6 border-b border-gray-200">
-      {{ if .Title }}<h1 class="text-[28px] font-semibold leading-tight text-gray-900 mt-0 mb-2">{{ .Title }}</h1>{{ end }}
-      {{ if .Description }}<p class="text-[15px] text-gray-500 mt-0 mb-3">{{ .Description }}</p>{{ end }}
+    <div class="pb-4 mb-6 border-b border-gray-200 dark:border-gray-800">
+      {{ if .Title }}<h1 class="text-[28px] font-semibold leading-tight text-gray-900 dark:text-gray-100 mt-0 mb-2">{{ .Title }}</h1>{{ end }}
+      {{ if .Description }}<p class="text-[15px] text-gray-500 dark:text-gray-400 mt-0 mb-3">{{ .Description }}</p>{{ end }}
       {{ if .Tags }}
       <ul class="flex flex-wrap gap-1.5 m-0 p-0 list-none">
-        {{ range .Tags }}<li><a href="/tags/{{ urlquery . }}" data-action="selectTag" data-entry-name="{{ . }}" class="inline-flex items-center bg-blue-100 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed no-underline cursor-pointer hover:bg-blue-200">{{ . }}</a></li>{{ end }}
+        {{ range .Tags }}<li><a href="/tags/{{ urlquery . }}" data-action="selectTag" data-entry-name="{{ . }}" class="inline-flex items-center bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-xs font-medium px-2 py-0.5 rounded-full leading-relaxed no-underline cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800">{{ . }}</a></li>{{ end }}
       </ul>
       {{ end }}
     </div>
     {{ end }}
     {{ end }}
-    <div class="markdown-body prose max-w-none">{{ .HTML }}</div>
+    <div class="markdown-body prose dark:prose-invert max-w-none">{{ .HTML }}</div>
   </div>
 </article>
 {{ end }}

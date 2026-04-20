@@ -1,7 +1,13 @@
 @import 'tailwindcss';
-@import 'highlight.js/styles/github.css';
 
 @plugin '@tailwindcss/typography';
+
+/*
+ * Manual dark mode: `.dark` on <html> unlocks `dark:*` utilities app-wide.
+ * Pre-paint in layout.html decides the class from localStorage /
+ * prefers-color-scheme before first render, so there's no flash.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * Tailwind v4 auto-detects sources relative to the CSS file, but Vite's
@@ -17,7 +23,7 @@
  * They don't appear in scanned source files, so tell Tailwind to generate
  * them unconditionally — v4's replacement for the old `safelist` config.
  */
-@source inline('broken-link uid-link task-checked task-unchecked task-tag selected bg-blue-100 border-blue-300 text-blue-700');
+@source inline('broken-link uid-link task-checked task-unchecked task-tag selected bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900 dark:border-blue-700 dark:text-blue-300');
 
 /*
  * Why this file exists (and why it still uses @apply in places).
@@ -96,16 +102,22 @@ html.sidebar-open #note-pane {
  * github.css theme paints `<code class="hljs">` on a white background.
  * Override both tokens so the <pre> chrome stays flush with the hljs
  * block inside it regardless of whether a given fence was highlighted.
+ * Dark mode mirrors the github-dark hljs palette.
  */
 .markdown-body {
   --tw-prose-pre-bg: #ffffff;
   --tw-prose-pre-code: #24292e;
 }
 
+.dark .markdown-body {
+  --tw-prose-pre-bg: #0d1117;
+  --tw-prose-pre-code: #c9d1d9;
+}
+
 @layer components {
   .markdown-body pre {
-    @apply border border-gray-200 rounded-md p-4 overflow-auto
-           mb-4 text-[85%] leading-snug;
+    @apply border border-gray-200 dark:border-gray-800 rounded-md p-4
+           overflow-auto mb-4 text-[85%] leading-snug;
   }
 
   .markdown-body code {
@@ -113,7 +125,7 @@ html.sidebar-open #note-pane {
   }
 
   .broken-link {
-    @apply text-red-600 line-through;
+    @apply text-red-600 dark:text-red-400 line-through;
   }
 
   .broken-link:hover {
@@ -121,28 +133,30 @@ html.sidebar-open #note-pane {
   }
 
   .uid-link {
-    @apply text-blue-600 font-mono text-[0.9em];
+    @apply text-blue-600 dark:text-blue-400 font-mono text-[0.9em];
   }
 
   .task-checked {
     @apply inline-flex items-center justify-center w-4 h-4 bg-green-700
-           text-white rounded-sm text-[11px] font-bold align-middle
-           mr-0.5 flex-shrink-0;
+           dark:bg-green-600 text-white rounded-sm text-[11px] font-bold
+           align-middle mr-0.5 flex-shrink-0;
   }
 
   .task-unchecked {
-    @apply inline-block w-4 h-4 border-2 border-gray-300 rounded-sm
-           align-middle mr-0.5 bg-white flex-shrink-0;
+    @apply inline-block w-4 h-4 border-2 border-gray-300 dark:border-gray-600
+           rounded-sm align-middle mr-0.5 bg-white dark:bg-gray-800
+           flex-shrink-0;
   }
 
   .task-tag {
-    @apply inline-flex items-center bg-gray-50 text-gray-500 border
-           border-gray-200 text-[11px] font-medium px-1.5 py-px
+    @apply inline-flex items-center bg-gray-50 dark:bg-gray-800
+           text-gray-500 dark:text-gray-400 border border-gray-200
+           dark:border-gray-700 text-[11px] font-medium px-1.5 py-px
            rounded-full align-middle font-sans;
   }
 
   .prose .broken-link {
-    @apply text-red-600 line-through;
+    @apply text-red-600 dark:text-red-400 line-through;
   }
 
   .prose .broken-link:hover {
@@ -150,6 +164,7 @@ html.sidebar-open #note-pane {
   }
 
   .prose .uid-link {
-    @apply text-blue-600 font-mono text-[0.9em] no-underline;
+    @apply text-blue-600 dark:text-blue-400 font-mono text-[0.9em]
+           no-underline;
   }
 }

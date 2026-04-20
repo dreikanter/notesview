@@ -135,7 +135,7 @@ export class TreeView {
     if (node.isDir) {
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = `${this._cls('toggle')} flex items-center justify-center w-8 flex-shrink-0 text-gray-400 cursor-pointer bg-transparent border-0 p-0`
+      btn.className = `${this._cls('toggle')} flex items-center justify-center w-8 flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-pointer bg-transparent border-0 p-0`
       btn.setAttribute('tabindex', '-1')
       btn.setAttribute('aria-hidden', 'true')
       btn.textContent = '\u25B8'
@@ -148,7 +148,7 @@ export class TreeView {
 
     const href = typeof this.rowHref === 'function' ? this.rowHref(node) : null
     const link = document.createElement(href ? 'a' : 'span')
-    link.className = `${this._cls('link')} flex-1 min-w-0 flex items-center gap-2 no-underline text-blue-600`
+    link.className = `${this._cls('link')} flex-1 min-w-0 flex items-center gap-2 no-underline text-blue-600 dark:text-blue-400`
     if (href) {
       link.setAttribute('href', href)
       link.setAttribute('tabindex', '-1')

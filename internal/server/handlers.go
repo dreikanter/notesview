@@ -86,7 +86,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	view := ViewData{
 		layoutFields: lf,
 		NotePath:     "",
-		HTML:         template.HTML(`<p class="text-gray-500 text-center py-8">No note selected.</p>`),
+		HTML:         template.HTML(`<p class="text-gray-500 dark:text-gray-400 text-center py-8">No note selected.</p>`),
 		ViewHref:     "/",
 		Sidebar: SidebarPartialData{
 			Tags:        tagsCard,

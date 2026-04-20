@@ -21,6 +21,7 @@ let sidebar = null
 document.addEventListener('DOMContentLoaded', function () {
   highlightIn(document)
   wireSidebarToggle()
+  wireThemeToggle()
   restoreSidebarState()
   sidebar = mountSidebar()
 })
@@ -46,6 +47,24 @@ function toggleSidebar() {
   try {
     localStorage.setItem('notesview.sidebarOpen', open ? '1' : '0')
   } catch (e) {}
+}
+
+function wireThemeToggle() {
+  const btn = document.getElementById('theme-toggle')
+  if (!btn) return
+  const root = document.documentElement
+  btn.setAttribute('aria-pressed', root.classList.contains('dark') ? 'true' : 'false')
+  btn.addEventListener('click', () => {
+    const isDark = root.classList.toggle('dark')
+    btn.setAttribute('aria-pressed', isDark ? 'true' : 'false')
+    try {
+      localStorage.setItem('notesview.theme', isDark ? 'dark' : 'light')
+    } catch (e) {}
+    const light = document.getElementById('hljs-light')
+    const dark = document.getElementById('hljs-dark')
+    if (light) light.disabled = isDark
+    if (dark) dark.disabled = !isDark
+  })
 }
 
 function getLS(key, fallback) {
