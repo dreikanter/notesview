@@ -145,6 +145,11 @@ export class TreeView {
       btn.setAttribute('data-expanded', 'false')
       btn.innerHTML = SQUARE_PLUS_SVG
       row.appendChild(btn)
+    } else {
+      const spacer = document.createElement('span')
+      spacer.className = `${this._cls('toggle-spacer')} w-4 flex-shrink-0`
+      spacer.setAttribute('aria-hidden', 'true')
+      row.appendChild(spacer)
     }
 
     const href = typeof this.rowHref === 'function' ? this.rowHref(node) : null
