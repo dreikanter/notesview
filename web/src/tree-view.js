@@ -124,7 +124,7 @@ export class TreeView {
 
   _buildItem(node, level) {
     const li = document.createElement('li')
-    li.className = `${this._cls('item')} ${node.isDir ? this._cls('item--dir') : this._cls('item--file')}`
+    li.className = `${this._cls('item')} ${node.isDir ? this._cls('item--dir') : this._cls('item--file')} border-b border-gray-100 dark:border-gray-800 last:border-b-0`
     li.setAttribute('role', 'treeitem')
     li.setAttribute('data-path', node.path)
     li.setAttribute('aria-level', String(level))
