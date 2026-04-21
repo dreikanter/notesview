@@ -239,10 +239,14 @@ func (r *noteLinkRenderer) renderAutoLink(w util.BufWriter, source []byte, node 
 	url := n.URL(source)
 	label := n.Label(source)
 	_, _ = w.WriteString(`<a href="`)
-	if n.AutoLinkType == ast.AutoLinkEmail && !bytes.HasPrefix(bytes.ToLower(url), []byte("mailto:")) {
-		_, _ = w.WriteString("mailto:")
+	if goldmarkhtml.IsDangerousURL(url) {
+		_ = w.WriteByte('#')
+	} else {
+		if n.AutoLinkType == ast.AutoLinkEmail && !bytes.HasPrefix(bytes.ToLower(url), []byte("mailto:")) {
+			_, _ = w.WriteString("mailto:")
+		}
+		_, _ = w.Write(util.EscapeHTML(util.URLEscape(url, false)))
 	}
-	_, _ = w.Write(util.EscapeHTML(util.URLEscape(url, false)))
 	_ = w.WriteByte('"')
 	display := string(label)
 	shortened := shortenURL(display, urlDisplayMax)

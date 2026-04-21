@@ -158,6 +158,19 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	if !strings.Contains(html2, `data:image/png`) {
 		t.Errorf("data:image/png URL should be preserved, got: %s", html2)
 	}
+
+	// Autolinks (`<scheme:...>`) reach a different render path than regular
+	// Link nodes, so exercise the same sanitization guarantees there.
+	autoInput := `<javascript:alert(1)> <vbscript:msgbox> <data:text/html,<script>alert(1)</script>>`
+	html3, err := r.Render([]byte(autoInput), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{`href="javascript:`, `href="vbscript:`, `href="data:text/html`} {
+		if strings.Contains(html3, bad) {
+			t.Errorf("dangerous autolink URL %q reached rendered href:\n%s", bad, html3)
+		}
+	}
 }
 
 // TestLongAutoLinkShortened verifies that GFM autolinks (bare URLs and
