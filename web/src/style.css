@@ -167,4 +167,15 @@ html.sidebar-open #note-pane {
     @apply text-blue-600 dark:text-blue-400 font-mono text-[0.9em]
            no-underline;
   }
+
+  /*
+   * Long URLs rendered verbatim (e.g. when an author writes `[url](url)` and
+   * the renderer's middle-ellipsis heuristic doesn't fire) would otherwise
+   * blow past the 900px note pane. `overflow-wrap: anywhere` only breaks
+   * strings that have no friendlier break opportunity, so normal prose
+   * wrapping is unaffected.
+   */
+  .markdown-body a {
+    overflow-wrap: anywhere;
+  }
 }

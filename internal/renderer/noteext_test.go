@@ -160,6 +160,105 @@ func TestDangerousURLsSanitized(t *testing.T) {
 	}
 }
 
+// TestLongAutoLinkShortened verifies that GFM autolinks (bare URLs and
+// `<url>` syntax) longer than urlDisplayMax get a middle-ellipsis display
+// label, with the full URL preserved in href and surfaced via title.
+func TestLongAutoLinkShortened(t *testing.T) {
+	r := NewRenderer(nil)
+	longURL := "https://example.com/very/long/path/to/a/document/that/should/be/shortened/when/rendered.html?x=1&y=2"
+	html, err := r.Render([]byte("See <"+longURL+"> for details."), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", longURL)
+	assertAttr(t, a, "title", longURL)
+	if strings.Contains(html, ">"+longURL+"<") {
+		t.Errorf("long URL should not appear as visible label:\n%s", html)
+	}
+	if !strings.Contains(html, "…") {
+		t.Errorf("shortened label should contain ellipsis:\n%s", html)
+	}
+}
+
+// TestShortAutoLinkUnchanged verifies that autolinks under the display
+// threshold render without a title attribute and with the full URL as
+// their visible label.
+func TestShortAutoLinkUnchanged(t *testing.T) {
+	r := NewRenderer(nil)
+	shortURL := "https://example.com/short"
+	html, err := r.Render([]byte("<"+shortURL+">"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", shortURL)
+	assertNoAttr(t, a, "title")
+	if !strings.Contains(html, ">"+shortURL+"<") {
+		t.Errorf("short URL should render in full as label:\n%s", html)
+	}
+}
+
+// TestLongExplicitLinkWithMatchingTextShortened verifies that `[url](url)`
+// written explicitly — where the visible text is identical to the
+// destination — also gets ellipsized when long.
+func TestLongExplicitLinkWithMatchingTextShortened(t *testing.T) {
+	r := NewRenderer(nil)
+	longURL := "https://example.com/very/long/path/to/a/document/that/should/be/shortened/when/rendered.html?x=1&y=2"
+	src := "See [" + longURL + "](" + longURL + ") now."
+	html, err := r.Render([]byte(src), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", longURL)
+	assertAttr(t, a, "title", longURL)
+	if strings.Contains(html, ">"+longURL+"<") {
+		t.Errorf("long URL should not appear as visible label:\n%s", html)
+	}
+	if !strings.Contains(html, "…") {
+		t.Errorf("shortened label should contain ellipsis:\n%s", html)
+	}
+}
+
+// TestExplicitLinkWithCustomTextUntouched pins that `[custom](long-url)`
+// — where the visible text differs from the destination — is left as-is.
+// The label is human-written copy, not the URL, so shortening would be
+// destructive.
+func TestExplicitLinkWithCustomTextUntouched(t *testing.T) {
+	r := NewRenderer(nil)
+	longURL := "https://example.com/very/long/path/to/a/document/that/should/not/be/touched.html?x=1&y=2"
+	src := "See [my custom label](" + longURL + ") now."
+	html, err := r.Render([]byte(src), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", longURL)
+	assertNoAttr(t, a, "title")
+	if !strings.Contains(html, ">my custom label<") {
+		t.Errorf("custom label should be preserved verbatim:\n%s", html)
+	}
+}
+
+func TestShortenURL(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		max  int
+		want string
+	}{
+		{"short unchanged", "https://example.com", 60, "https://example.com"},
+		{"boundary unchanged", strings.Repeat("a", 60), 60, strings.Repeat("a", 60)},
+		{"long truncated", strings.Repeat("a", 100), 10, strings.Repeat("a", 6) + "…" + strings.Repeat("a", 3)},
+		{"unicode respected", strings.Repeat("ä", 100), 10, strings.Repeat("ä", 6) + "…" + strings.Repeat("ä", 3)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := shortenURL(c.in, c.max)
+			if got != c.want {
+				t.Errorf("shortenURL(%q, %d) = %q; want %q", c.in, c.max, got, c.want)
+			}
+		})
+	}
+}
+
 // TestInternalLinksNoDirQuery verifies that internal links do not carry
 // any ?dir= query parameter.
 func TestInternalLinksNoDirQuery(t *testing.T) {
