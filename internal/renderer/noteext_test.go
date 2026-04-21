@@ -197,46 +197,6 @@ func TestShortAutoLinkUnchanged(t *testing.T) {
 	}
 }
 
-// TestLongExplicitLinkWithMatchingTextShortened verifies that `[url](url)`
-// written explicitly — where the visible text is identical to the
-// destination — also gets ellipsized when long.
-func TestLongExplicitLinkWithMatchingTextShortened(t *testing.T) {
-	r := NewRenderer(nil)
-	longURL := "https://example.com/very/long/path/to/a/document/that/should/be/shortened/when/rendered.html?x=1&y=2"
-	src := "See [" + longURL + "](" + longURL + ") now."
-	html, err := r.Render([]byte(src), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := findAnchor(t, html, "href", longURL)
-	assertAttr(t, a, "title", longURL)
-	if strings.Contains(html, ">"+longURL+"<") {
-		t.Errorf("long URL should not appear as visible label:\n%s", html)
-	}
-	if !strings.Contains(html, "…") {
-		t.Errorf("shortened label should contain ellipsis:\n%s", html)
-	}
-}
-
-// TestExplicitLinkWithCustomTextUntouched pins that `[custom](long-url)`
-// — where the visible text differs from the destination — is left as-is.
-// The label is human-written copy, not the URL, so shortening would be
-// destructive.
-func TestExplicitLinkWithCustomTextUntouched(t *testing.T) {
-	r := NewRenderer(nil)
-	longURL := "https://example.com/very/long/path/to/a/document/that/should/not/be/touched.html?x=1&y=2"
-	src := "See [my custom label](" + longURL + ") now."
-	html, err := r.Render([]byte(src), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := findAnchor(t, html, "href", longURL)
-	assertNoAttr(t, a, "title")
-	if !strings.Contains(html, ">my custom label<") {
-		t.Errorf("custom label should be preserved verbatim:\n%s", html)
-	}
-}
-
 func TestShortenURL(t *testing.T) {
 	cases := []struct {
 		name string
@@ -245,9 +205,9 @@ func TestShortenURL(t *testing.T) {
 		want string
 	}{
 		{"short unchanged", "https://example.com", 60, "https://example.com"},
-		{"boundary unchanged", strings.Repeat("a", 60), 60, strings.Repeat("a", 60)},
-		{"long truncated", strings.Repeat("a", 100), 10, strings.Repeat("a", 6) + "…" + strings.Repeat("a", 3)},
-		{"unicode respected", strings.Repeat("ä", 100), 10, strings.Repeat("ä", 6) + "…" + strings.Repeat("ä", 3)},
+		{"boundary unchanged", strings.Repeat("a", 30), 30, strings.Repeat("a", 30)},
+		{"cuts on path boundary", "https://example.com/aaa/bbb/ccc/ddd/eee/fff", 30, "https://example.com/aaa/bbb" + "…"},
+		{"falls back to hard cut when slash is too early", "https://a.b/" + strings.Repeat("x", 50), 30, "https://a.b/" + strings.Repeat("x", 18) + "…"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

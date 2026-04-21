@@ -5,7 +5,7 @@
 ### Changed
 
 - Refactor sidebar into a reusable client-side `TreeView` component. Tree state (expanded, selected, focus) lives in the browser; the server exposes `/api/tree/list` for children and a unified `/events` SSE stream that emits both file-change and directory-mutation events. ([#88])
-- Collapse long URLs in rendered notes with a middle ellipsis so autolinks and `[url](url)` links fit the note pane; the full URL stays in `href` and is exposed via a `title` tooltip, and a CSS fallback wraps any stragglers. ([#93])
+- Trim long autolinks in rendered notes with a trailing ellipsis at the last path-segment boundary; the full URL stays in `href` and is exposed via a `title` tooltip, and a CSS rule wraps anything not trimmed. ([#93])
 
 [#88]: https://github.com/dreikanter/notes-view/issues/88
 [#93]: https://github.com/dreikanter/notes-view/issues/93

@@ -207,27 +207,29 @@ func (r *noteLinkRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer
 	reg.Register(ast.KindAutoLink, r.renderAutoLink)
 }
 
-// urlDisplayMax is the rune-count threshold above which an autolink's visible
-// text is collapsed with a middle ellipsis. 60 is short enough to fit on one
-// line of a typical 900px note pane at default prose font size, long enough
-// to keep the origin and the final path segment recognizable.
+// urlDisplayMax is the character threshold above which an autolink's
+// visible label is trimmed with a trailing ellipsis. 60 fits on one line
+// of the 900px note pane at default prose font size.
 const urlDisplayMax = 60
 
-// shortenURL returns u with a middle ellipsis when its rune count exceeds max.
-// Two-thirds of the budget goes to the head so the scheme, host, and leading
-// path remain visible; the tail preserves the file name or query suffix.
+// shortenURL trims u to roughly max characters plus a trailing "…". When
+// possible it backs the cut up to the last "/" in the back half of the
+// budget so the visible label ends on a path-segment boundary rather than
+// mid-token. URLs are treated as byte strings — URL syntax is ASCII, and
+// the rare Unicode host shows up percent-encoded in hrefs we see.
 func shortenURL(u string, max int) string {
-	runes := []rune(u)
-	if len(runes) <= max {
+	if len(u) <= max {
 		return u
 	}
-	head := (max - 1) * 2 / 3
-	tail := max - 1 - head
-	return string(runes[:head]) + "…" + string(runes[len(runes)-tail:])
+	head := u[:max]
+	if i := strings.LastIndex(head, "/"); i > max/2 {
+		head = head[:i]
+	}
+	return head + "…"
 }
 
-// renderAutoLink mirrors goldmark's default autolink renderer but collapses
-// the visible label with a middle ellipsis when the URL is long, preserving
+// renderAutoLink mirrors goldmark's default autolink renderer but trims the
+// visible label with a trailing ellipsis when the URL is long, preserving
 // the full URL in href and in a title attribute for hover/tap inspection.
 func (r *noteLinkRenderer) renderAutoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.AutoLink)
@@ -257,82 +259,41 @@ func (r *noteLinkRenderer) renderAutoLink(w util.BufWriter, source []byte, node 
 
 func (r *noteLinkRenderer) renderLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
-	if !entering {
-		_, _ = w.WriteString("</a>")
-		return ast.WalkContinue, nil
-	}
-	_, _ = w.WriteString(`<a href="`)
-	if goldmarkhtml.IsDangerousURL(n.Destination) {
-		_ = w.WriteByte('#')
-	} else {
-		_, _ = w.Write(util.EscapeHTML(util.URLEscape(n.Destination, true)))
-	}
-	_ = w.WriteByte('"')
-
-	if v, ok := n.AttributeString("class"); ok {
-		if b, ok := v.([]byte); ok {
-			_, _ = w.WriteString(` class="`)
-			_, _ = w.Write(util.EscapeHTML(b))
-			_ = w.WriteByte('"')
+	if entering {
+		_, _ = w.WriteString(`<a href="`)
+		if goldmarkhtml.IsDangerousURL(n.Destination) {
+			_ = w.WriteByte('#')
+		} else {
+			_, _ = w.Write(util.EscapeHTML(util.URLEscape(n.Destination, true)))
 		}
-	}
-	if isInternalLink(n.Destination) {
-		_, _ = w.WriteString(` hx-boost="true" hx-target="#note-pane"`)
-	}
+		_ = w.WriteByte('"')
 
-	// When the visible link text equals the destination and that URL is long,
-	// swap the label for a middle-ellipsis form and surface the full URL via
-	// the title attribute. This catches `[url](url)` written explicitly, which
-	// goldmark parses as *ast.Link rather than *ast.AutoLink.
-	shortLabel, shortened := shortenedLinkLabel(n, source)
-
-	if v, ok := n.AttributeString("title"); ok {
-		if b, ok := v.([]byte); ok {
+		if v, ok := n.AttributeString("class"); ok {
+			if b, ok := v.([]byte); ok {
+				_, _ = w.WriteString(` class="`)
+				_, _ = w.Write(util.EscapeHTML(b))
+				_ = w.WriteByte('"')
+			}
+		}
+		if isInternalLink(n.Destination) {
+			_, _ = w.WriteString(` hx-boost="true" hx-target="#note-pane"`)
+		}
+		if v, ok := n.AttributeString("title"); ok {
+			if b, ok := v.([]byte); ok {
+				_, _ = w.WriteString(` title="`)
+				_, _ = w.Write(util.EscapeHTML(b))
+				_ = w.WriteByte('"')
+			}
+		} else if len(n.Title) > 0 {
 			_, _ = w.WriteString(` title="`)
-			_, _ = w.Write(util.EscapeHTML(b))
+			_, _ = w.Write(util.EscapeHTML(n.Title))
 			_ = w.WriteByte('"')
 		}
-	} else if len(n.Title) > 0 {
-		_, _ = w.WriteString(` title="`)
-		_, _ = w.Write(util.EscapeHTML(n.Title))
-		_ = w.WriteByte('"')
-	} else if shortened {
-		_, _ = w.WriteString(` title="`)
-		_, _ = w.Write(util.EscapeHTML(n.Destination))
-		_ = w.WriteByte('"')
-	}
-	_ = w.WriteByte('>')
-	if shortened {
-		// The leaving branch still runs after WalkSkipChildren and emits the
-		// closing </a>, so only write the label here.
-		_, _ = w.Write(util.EscapeHTML([]byte(shortLabel)))
-		return ast.WalkSkipChildren, nil
+		_ = w.WriteByte('>')
+	} else {
+		_, _ = w.WriteString("</a>")
 	}
 	return ast.WalkContinue, nil
-}
-
-// shortenedLinkLabel returns a middle-ellipsized label when the link has a
-// single Text child equal to its destination and the destination exceeds the
-// display threshold. The second return reports whether shortening kicked in;
-// callers should fall through to normal child rendering when it didn't.
-func shortenedLinkLabel(n *ast.Link, source []byte) (string, bool) {
-	if n.ChildCount() != 1 {
-		return "", false
-	}
-	text, ok := n.FirstChild().(*ast.Text)
-	if !ok {
-		return "", false
-	}
-	label := text.Segment.Value(source)
-	if !bytes.Equal(label, n.Destination) {
-		return "", false
-	}
-	s := string(label)
-	short := shortenURL(s, urlDisplayMax)
-	if short == s {
-		return "", false
-	}
-	return short, true
 }
 
 // isInternalLink returns true if the destination points at a note the
