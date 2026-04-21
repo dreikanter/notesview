@@ -20,10 +20,8 @@ func mustFaviconDataURI() template.URL {
 	return template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(data))
 }
 
-func templateFuncs() template.FuncMap {
-	return template.FuncMap{
-		"faviconDataURI": func() template.URL { return faviconDataURI },
-	}
+var templateFuncMap = template.FuncMap{
+	"faviconDataURI": func() template.URL { return faviconDataURI },
 }
 
 type IndexEntry struct {
@@ -120,14 +118,14 @@ func loadTemplates() (*templateSet, error) {
 func parsePage(page string) (*template.Template, error) {
 	files := append([]string{}, partials...)
 	files = append(files, page)
-	return template.New("notesview").Funcs(templateFuncs()).ParseFS(web.TemplatesFS, files...)
+	return template.New("notesview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, files...)
 }
 
 // parsePartial loads only the files needed to render one partial
 // template, so a partial response doesn't accidentally include the
 // full layout.
 func parsePartial(name string) (*template.Template, error) {
-	return template.New("notesview").Funcs(templateFuncs()).ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/entry_list.html", "templates/sidebar_tree.html")
+	return template.New("notesview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/entry_list.html", "templates/sidebar_tree.html")
 }
 
 func (t *templateSet) renderView(w io.Writer, data ViewData) error {
