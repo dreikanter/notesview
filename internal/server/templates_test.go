@@ -92,7 +92,7 @@ func TestRenderView(t *testing.T) {
 		HTML:     template.HTML("<p>Hello world</p>"),
 		SSEWatch: "/events?watch=notes%2Ftest.md",
 		ViewHref: "/view/notes/test.md",
-		Sidebar: SidebarPartialData{
+		Sidebar: SidebarData{
 			Tags: &IndexCard{
 				Entries: nil,
 				Empty:   "No tags found.",

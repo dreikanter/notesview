@@ -45,11 +45,10 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	}
 	inner := line[2 : 2+end]
 
-	// Validate UID pattern: 8 digits + '_' + 4+ digits
-	if !isValidUID(inner) {
+	uid := string(inner)
+	if !index.IsUID(uid) {
 		return nil
 	}
-	uid := string(inner)
 
 	stateAny := pc.Get(noteLinkStateKey)
 	if stateAny == nil {
@@ -72,28 +71,6 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	link.SetAttributeString("class", []byte("uid-link"))
 	link.AppendChild(link, ast.NewString([]byte(uid)))
 	return link
-}
-
-// isValidUID checks if b matches the UID pattern: exactly 8 digits,
-// an underscore, then 4 or more digits.
-func isValidUID(b []byte) bool {
-	if len(b) < 13 { // 8 + 1 + 4 minimum
-		return false
-	}
-	for i := 0; i < 8; i++ {
-		if b[i] < '0' || b[i] > '9' {
-			return false
-		}
-	}
-	if b[8] != '_' {
-		return false
-	}
-	for i := 9; i < len(b); i++ {
-		if b[i] < '0' || b[i] > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // noteLinkStateKey identifies per-request state stored in parser.Context.

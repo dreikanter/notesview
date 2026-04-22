@@ -54,7 +54,7 @@ type ViewData struct {
 	HTML       template.HTML
 	SSEWatch   string
 	ViewHref   string
-	Sidebar    SidebarPartialData
+	Sidebar    SidebarData
 	DirListing *DirListingData // non-nil when main panel shows a directory listing
 }
 
@@ -72,8 +72,9 @@ type NotePartialData struct {
 	EditHref  string
 }
 
-// SidebarPartialData is the render context for the sidebar tree.
-type SidebarPartialData struct {
+// SidebarData is the render context for the sidebar tree, embedded in
+// every full-page ViewData.
+type SidebarData struct {
 	Tags        *IndexCard  // TAGS section entries
 	InitialJSON template.JS // {"selectedPath": "<path>" | null} — consumed by TreeView
 }

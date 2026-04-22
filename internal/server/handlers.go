@@ -88,7 +88,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		NotePath:     "",
 		HTML:         template.HTML(`<p class="text-gray-500 dark:text-gray-400 text-center py-8">No note selected.</p>`),
 		ViewHref:     "/",
-		Sidebar: SidebarPartialData{
+		Sidebar: SidebarData{
 			Tags:        tagsCard,
 			InitialJSON: buildInitialJSON(""),
 		},
@@ -180,7 +180,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		HTML:         template.HTML(html),
 		SSEWatch:     viewSSEWatch(reqPath),
 		ViewHref:     "/view/" + viewPath(reqPath),
-		Sidebar: SidebarPartialData{
+		Sidebar: SidebarData{
 			Tags:        tagsCard,
 			InitialJSON: buildInitialJSON(reqPath),
 		},
@@ -285,13 +285,9 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the editor env var the way shells treat $EDITOR: the first
-	// token is the binary, the rest are leading arguments (e.g.
-	// `code --wait`, `subl -w`, `nvim -R`). Without this split, exec
-	// looks for a literal binary named `"code --wait"` and 500s. A
-	// whitespace-only value slips past the `== ""` guard above but
-	// yields zero fields, so recheck after Fields to avoid indexing a
-	// nil slice and panicking the handler.
+	// Split the editor value the way shells treat $EDITOR (`code --wait`,
+	// `subl -w`, …). The recheck handles whitespace-only values that pass
+	// the `== ""` guard but yield zero fields.
 	fields := strings.Fields(s.editor)
 	if len(fields) == 0 {
 		http.Error(w, "no editor configured (set NOTESVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
@@ -313,27 +309,6 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
 	dirPath := r.PathValue("path")
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// Main panel partial: flat listing of this directory.
-	if hxTargetedAt(r, "note-pane") {
-		card, err := s.buildDirIndex(dirPath)
-		if err != nil {
-			s.logger.Warn("dir listing build failed", "dir", dirPath, "err", err)
-			card = &IndexCard{Empty: "Failed to read directory."}
-		}
-		title := dirPath
-		if title == "" {
-			title = "/"
-		}
-		if err := s.templates.renderDirListing(w, DirListingData{Title: title, IndexCard: card}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Full-page load (direct URL visit / reload): render two-pane layout
-	// with directory listing in the main panel.
 	card, err := s.buildDirIndex(dirPath)
 	if err != nil {
 		s.logger.Warn("dir listing build failed", "dir", dirPath, "err", err)
@@ -343,17 +318,29 @@ func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = "/"
 	}
-	tagsCard := s.buildTagsIndex()
+	listing := DirListingData{Title: title, IndexCard: card}
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	// Main panel partial: flat listing of this directory.
+	if hxTargetedAt(r, "note-pane") {
+		if err := s.templates.renderDirListing(w, listing); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Full-page load (direct URL visit / reload): render two-pane layout
+	// with directory listing in the main panel.
 	view := ViewData{
 		layoutFields: s.buildLayoutFields(title, ""),
 		HTML:         template.HTML(""),
 		ViewHref:     "/dir/" + viewPath(dirPath),
-		Sidebar: SidebarPartialData{
-			Tags:        tagsCard,
+		Sidebar: SidebarData{
+			Tags:        s.buildTagsIndex(),
 			InitialJSON: buildInitialJSON(dirPath),
 		},
-		DirListing: &DirListingData{Title: title, IndexCard: card},
+		DirListing: &listing,
 	}
 	if err := s.templates.renderView(w, view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -373,7 +360,7 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 	view := ViewData{
 		layoutFields: s.buildLayoutFields("Tags", ""),
 		ViewHref:     "/tags",
-		Sidebar: SidebarPartialData{
+		Sidebar: SidebarData{
 			Tags:        card,
 			InitialJSON: buildInitialJSON(""),
 		},
@@ -417,7 +404,7 @@ func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 	view := ViewData{
 		layoutFields: s.buildLayoutFields(tag, ""),
 		ViewHref:     "/tags/" + tagPath(tag),
-		Sidebar: SidebarPartialData{
+		Sidebar: SidebarData{
 			Tags:        tagsCard,
 			InitialJSON: buildInitialJSON(""),
 		},

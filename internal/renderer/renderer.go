@@ -71,22 +71,15 @@ func (r *Renderer) Render(source []byte, currentDir string) (string, error) {
 	return html, nil
 }
 
-// StripRedundantTitle removes a leading <h1>X</h1> from html when its
-// plain-text content equals title. Returns html unchanged when title is
-// empty or no match is found.
+// StripRedundantTitle removes a leading <h1> whose plain-text content equals
+// title, avoiding a duplicate heading when the frontmatter bar already shows
+// it. Returns html unchanged when title is empty or no match is found. HTML
+// entities in the heading are decoded so titles like "A & B" match both
+// `# A & B` (rendered as "A &amp; B") and the plain frontmatter value.
 func StripRedundantTitle(html, title string) string {
 	if title == "" {
 		return html
 	}
-	return stripRedundantTitle(html, title)
-}
-
-// stripRedundantTitle removes a leading <h1> whose plain-text content equals
-// the frontmatter title, avoiding a duplicate heading when the frontmatter
-// bar already shows the title. HTML entities in the heading are decoded so
-// titles like "A & B" match both `# A & B` (rendered as "A &amp; B") and the
-// plain frontmatter value.
-func stripRedundantTitle(html, title string) string {
 	m := leadingH1.FindStringSubmatchIndex(html)
 	if m == nil {
 		return html
