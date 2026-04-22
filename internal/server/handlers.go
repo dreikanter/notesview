@@ -285,9 +285,11 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Split the editor value the way shells treat $EDITOR (`code --wait`,
-	// `subl -w`, …). The recheck handles whitespace-only values that pass
-	// the `== ""` guard but yield zero fields.
+	// Split the $EDITOR-style editor value on Unicode whitespace via
+	// strings.Fields so values like `code --wait` or `subl -w` run as
+	// binary + args. This is not a shell parser — quoting and escaping
+	// are not honored. The recheck handles whitespace-only values that
+	// pass the `== ""` guard but yield zero fields.
 	fields := strings.Fields(s.editor)
 	if len(fields) == 0 {
 		http.Error(w, "no editor configured (set NOTESVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
