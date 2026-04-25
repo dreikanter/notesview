@@ -4,73 +4,50 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolvePath_Directory(t *testing.T) {
 	dir := t.TempDir()
 	root, initialFile, err := resolvePath(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want, _ := filepath.Abs(dir)
-	if root != want {
-		t.Errorf("root = %q, want %q", root, want)
-	}
-	if initialFile != "" {
-		t.Errorf("initialFile = %q, want empty", initialFile)
-	}
+	assert.Equal(t, want, root)
+	assert.Empty(t, initialFile)
 }
 
 func TestResolvePath_File(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "note.md")
-	if err := os.WriteFile(file, []byte("hello"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(file, []byte("hello"), 0o644))
 
 	root, initialFile, err := resolvePath(file)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	wantRoot, _ := filepath.Abs(dir)
-	if root != wantRoot {
-		t.Errorf("root = %q, want %q", root, wantRoot)
-	}
-	if initialFile != "note.md" {
-		t.Errorf("initialFile = %q, want %q", initialFile, "note.md")
-	}
+	assert.Equal(t, wantRoot, root)
+	assert.Equal(t, "note.md", initialFile)
 }
 
 func TestResolvePath_Nonexistent(t *testing.T) {
 	_, _, err := resolvePath("/nonexistent/path/that/does/not/exist")
-	if err == nil {
-		t.Error("expected error for nonexistent path")
-	}
+	assert.Error(t, err)
 }
 
 func TestResolvePath_Symlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
-	if err := os.Mkdir(target, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(target, 0o755))
 	link := filepath.Join(dir, "link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Symlink(target, link))
 
 	root, initialFile, err := resolvePath(link)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	// resolvePath uses filepath.Abs, which preserves symlink paths
 	wantRoot, _ := filepath.Abs(link)
-	if root != wantRoot {
-		t.Errorf("root = %q, want %q", root, wantRoot)
-	}
-	if initialFile != "" {
-		t.Errorf("initialFile = %q, want empty", initialFile)
-	}
+	assert.Equal(t, wantRoot, root)
+	assert.Empty(t, initialFile)
 }
 
 func TestExpandTilde(t *testing.T) {
@@ -94,9 +71,7 @@ func TestExpandTilde(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := expandTilde(tt.path)
-			if got != tt.want {
-				t.Errorf("expandTilde(%q) = %q, want %q", tt.path, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -119,17 +94,12 @@ func TestBrowserCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := browserCommand(tt.goos, tt.url)
 			if tt.wantNil {
-				if cmd != nil {
-					t.Errorf("expected nil command for GOOS=%q", tt.goos)
-				}
+				assert.Nil(t, cmd)
 				return
 			}
-			if cmd == nil {
-				t.Fatalf("expected non-nil command for GOOS=%q", tt.goos)
-			}
-			if filepath.Base(cmd.Path) != tt.wantBin && cmd.Args[0] != tt.wantBin {
-				t.Errorf("expected binary %q, got path %q", tt.wantBin, cmd.Path)
-			}
+			require.NotNil(t, cmd)
+			assert.Truef(t, filepath.Base(cmd.Path) == tt.wantBin || cmd.Args[0] == tt.wantBin,
+				"expected binary %q, got path %q", tt.wantBin, cmd.Path)
 		})
 	}
 }

@@ -1,8 +1,10 @@
 package renderer
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTaskSyntax(t *testing.T) {
@@ -37,13 +39,9 @@ func TestTaskSyntax(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			html, err := r.Render([]byte(tt.input), "")
-			if err != nil {
-				t.Fatalf("Render failed: %v", err)
-			}
+			require.NoError(t, err, "Render failed")
 			for _, want := range tt.contains {
-				if !strings.Contains(html, want) {
-					t.Errorf("output missing %q\ngot: %s", want, html)
-				}
+				assert.Contains(t, html, want)
 			}
 		})
 	}

@@ -2,6 +2,9 @@ package server
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSafePath(t *testing.T) {
@@ -25,18 +28,11 @@ func TestSafePath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := SafePath(root, tt.reqPath)
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error for %q, got %q", tt.reqPath, got)
-				}
+				assert.Error(t, err, "expected error for %q, got %q", tt.reqPath, got)
 				return
 			}
-			if err != nil {
-				t.Errorf("unexpected error for %q: %v", tt.reqPath, err)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("SafePath(%q, %q) = %q, want %q", root, tt.reqPath, got, tt.want)
-			}
+			require.NoError(t, err, "SafePath(%q, %q)", root, tt.reqPath)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
