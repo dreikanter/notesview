@@ -1,6 +1,6 @@
 # Version Tracking Design
 
-Add version tracking, `--version` flag, and changelog to notesview, matching the pattern established in notes-cli.
+Add version tracking, `--version` flag, and changelog to notesview, matching the pattern established in [notesctl](https://github.com/dreikanter/notesctl).
 
 ## Version Variable & Flag
 
@@ -51,7 +51,7 @@ update:
 
 - `VERSION` from `git describe --tags --always --dirty`, falling back to `dev`
 - `-ldflags` added to `build` target
-- New `install` and `update` targets matching notes-cli
+- New `install` and `update` targets matching [notesctl](https://github.com/dreikanter/notesctl)
 
 ## GitHub Action: Auto-Tag on PR Merge
 
@@ -89,7 +89,7 @@ jobs:
           echo "Tagged $NEXT"
 ```
 
-Identical to notes-cli. Auto-increments patch version on every merged PR.
+Identical to [notesctl](https://github.com/dreikanter/notesctl). Auto-increments patch version on every merged PR.
 
 ## CHANGELOG.md
 
