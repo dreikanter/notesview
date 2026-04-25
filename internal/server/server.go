@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dreikanter/notes-view/internal/index"
-	"github.com/dreikanter/notes-view/internal/logging"
-	"github.com/dreikanter/notes-view/internal/renderer"
-	"github.com/dreikanter/notes-view/web"
+	"github.com/dreikanter/nview/internal/index"
+	"github.com/dreikanter/nview/internal/logging"
+	"github.com/dreikanter/nview/internal/renderer"
+	"github.com/dreikanter/nview/web"
 )
 
 type Server struct {

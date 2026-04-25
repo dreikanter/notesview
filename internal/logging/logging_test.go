@@ -67,7 +67,7 @@ func TestNewInvalidFormat(t *testing.T) {
 
 func TestNewWithFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "nested", "notesview.log")
+	path := filepath.Join(dir, "nested", "nview.log")
 
 	logger, closer, err := New(Config{File: path, Format: "json"})
 	if err != nil {

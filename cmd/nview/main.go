@@ -11,7 +11,7 @@ import (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:           "notesview",
+	Use:           "nview",
 	Short:         "Markdown notes viewer with live preview",
 	SilenceErrors: true,
 	SilenceUsage:  true,

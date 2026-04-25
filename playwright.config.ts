@@ -22,11 +22,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `go run ./cmd/notesview serve --path "${notesDir}"`,
+    command: `go run ./cmd/nview serve --path "${notesDir}"`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     env: {
-      NOTESVIEW_PORT: String(PORT),
+      NVIEW_PORT: String(PORT),
     },
   },
 });

@@ -1,6 +1,6 @@
 .PHONY: build test test-unit lint clean assets assets-watch all install update
 
-BINARY := notesview
+BINARY := nview
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.Version=$(VERSION)
 
@@ -34,4 +34,4 @@ update:
 	git checkout main
 	git pull --tags
 	$(MAKE) install
-	@echo "Installed: $$(notesview --version)"
+	@echo "Installed: $$(nview --version)"

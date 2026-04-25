@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreikanter/notes-view/internal/index"
+	"github.com/dreikanter/nview/internal/index"
 )
 
 func TestLoadTemplates(t *testing.T) {
@@ -111,7 +111,7 @@ func TestRenderView(t *testing.T) {
 		contains string
 	}{
 		{"doctype", "<!DOCTYPE html>"},
-		{"title", "Test Note — notesview"},
+		{"title", "Test Note — nview"},
 		{"note content", "Hello world"},
 		{"frontmatter title", ">Test Note<"},
 		{"tag go", ">go<"},
@@ -145,9 +145,9 @@ func TestRenderView_EmptyTitle(t *testing.T) {
 	}
 
 	body := buf.String()
-	// When Title is empty, the page title should just be "notesview" without a dash.
-	if !strings.Contains(body, "<title>notesview</title>") {
-		t.Error("expected plain 'notesview' title when Title is empty")
+	// When Title is empty, the page title should just be "nview" without a dash.
+	if !strings.Contains(body, "<title>nview</title>") {
+		t.Error("expected plain 'nview' title when Title is empty")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	"github.com/dreikanter/notes-view/internal/index"
+	"github.com/dreikanter/nview/internal/index"
 )
 
 // leadingH1 matches the first <h1>…</h1> at the start of the document,
@@ -32,7 +32,7 @@ func NewRenderer(idx *index.NoteIndex) *Renderer {
 	// escapes raw HTML from markdown sources (e.g. a malicious <script> block
 	// becomes text). This matters even for a local-only previewer because a
 	// note file cloned from an untrusted repo could otherwise run JS in the
-	// notesview origin and hit the /api/edit endpoint.
+	// nview origin and hit the /api/edit endpoint.
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,

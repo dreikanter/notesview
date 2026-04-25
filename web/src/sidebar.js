@@ -1,4 +1,4 @@
-// Sidebar glue: wires the reusable TreeView component to notes-view
+// Sidebar glue: wires the reusable TreeView component to nview
 // navigation. Reads the server-embedded initial state, constructs the
 // component with a fetch-based loader, and translates tree events into
 // HTMX + history navigation. SSE from the unified /events endpoint
@@ -48,7 +48,7 @@ export function mountSidebar() {
       return r.json()
     }),
     initial,
-    persistKey: 'notesview.tree',
+    persistKey: 'nview.tree',
     rowHref: (node) => (node.isDir ? '/dir/' : '/view/') + encodePath(node.path),
   })
 

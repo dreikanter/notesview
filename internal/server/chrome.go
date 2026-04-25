@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dreikanter/notes-view/internal/index"
+	"github.com/dreikanter/nview/internal/index"
 )
 
 // viewPath percent-encodes each segment of a relative file/dir path for

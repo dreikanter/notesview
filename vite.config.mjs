@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // layout.html can swap them at runtime by toggling `disabled` on <link>.
 function hljsThemes() {
   return {
-    name: 'notesview-hljs-themes',
+    name: 'nview-hljs-themes',
     generateBundle() {
       const read = (p) => readFileSync(resolve(__dirname, 'node_modules/highlight.js/styles', p), 'utf-8').replace(/\n?$/, '\n')
       this.emitFile({ type: 'asset', fileName: 'hljs-light.css', source: read('github.css') })
