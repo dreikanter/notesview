@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ if .Title }}{{ .Title }} — {{ end }}notesview</title>
+  <title>{{ if .Title }}{{ .Title }} — {{ end }}nview</title>
   <link rel="icon" href="{{ faviconDataURI }}">
   <script>
     // Pre-paint: decide theme and sidebar state from localStorage before
     // first render so the user never sees a flash of the wrong theme.
-    // `notesview.theme` = 'light' | 'dark'. Unset falls back to
+    // `nview.theme` = 'light' | 'dark'. Unset falls back to
     // prefers-color-scheme.
     try {
-      var stored = localStorage.getItem('notesview.theme');
+      var stored = localStorage.getItem('nview.theme');
       var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       var isDark = stored === 'dark' || (!stored && prefersDark);
       if (isDark) document.documentElement.classList.add('dark');
-      window.__notesviewTheme = isDark ? 'dark' : 'light';
-      if (localStorage.getItem('notesview.sidebarOpen') === '1') {
+      window.__nviewTheme = isDark ? 'dark' : 'light';
+      if (localStorage.getItem('nview.sidebarOpen') === '1') {
         document.documentElement.classList.add('sidebar-open');
       }
     } catch (e) {}
@@ -27,7 +27,7 @@
   <script>
     // Disable the inactive hljs theme before any code block is rendered.
     try {
-      var darkNow = window.__notesviewTheme === 'dark';
+      var darkNow = window.__nviewTheme === 'dark';
       var l = document.getElementById('hljs-light');
       var d = document.getElementById('hljs-dark');
       if (l) l.disabled = darkNow;

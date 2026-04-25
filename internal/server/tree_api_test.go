@@ -87,7 +87,9 @@ func TestTreeListPathEscaped(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
 	}
-	var nodes []struct{ Path string `json:"path"` }
+	var nodes []struct {
+		Path string `json:"path"`
+	}
 	json.Unmarshal(w.Body.Bytes(), &nodes)
 	if len(nodes) == 0 {
 		t.Fatal("expected entries under 2026/03")

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreikanter/notes-view/internal/logging"
+	"github.com/dreikanter/nview/internal/logging"
 )
 
 var uidPattern = regexp.MustCompile(`^(\d{5,}_\d+)`)

@@ -1,4 +1,4 @@
-# notesview
+# nview
 
 A local web server for browsing and previewing markdown notes with live reload.
 
@@ -13,13 +13,13 @@ A local web server for browsing and previewing markdown notes with live reload.
 ## Installation
 
 ```sh
-go install github.com/dreikanter/notes-view/cmd/notesview@latest
+go install github.com/dreikanter/nview/cmd/nview@latest
 ```
 
 ## Usage
 
 ```sh
-notesview <command> [flags]
+nview <command> [flags]
 ```
 
 ### serve
@@ -27,30 +27,30 @@ notesview <command> [flags]
 Start the local preview server.
 
 ```sh
-notesview serve [flags]
+nview serve [flags]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--path` | `$NOTESVIEW_PATH` → `$NOTES_PATH` → `.` | Notes root directory or file to open |
+| `--path` | `$NVIEW_PATH` → `$NOTES_PATH` → `.` | Notes root directory or file to open |
 | `--port`, `-p` | auto | Port to listen on |
 | `--open`, `-o` | false | Open browser on start |
-| `--editor` | `$NOTESVIEW_EDITOR` → `$VISUAL` → `$EDITOR` | Editor command |
-| `--log-level` | `$NOTESVIEW_LOG_LEVEL` → `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `--log-format` | `$NOTESVIEW_LOG_FORMAT` → `text` | Log output format: `text` or `json` |
-| `--log-file` | `$NOTESVIEW_LOG_FILE` | Optional log file path (logs also go to stdout) |
+| `--editor` | `$NVIEW_EDITOR` → `$VISUAL` → `$EDITOR` | Editor command |
+| `--log-level` | `$NVIEW_LOG_LEVEL` → `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `--log-format` | `$NVIEW_LOG_FORMAT` → `text` | Log output format: `text` or `json` |
+| `--log-file` | `$NVIEW_LOG_FILE` | Optional log file path (logs also go to stdout) |
 
 If `--path` points to a file, the server root is set to the file's parent directory and the file is opened directly in the browser (when `--open` is set).
 
 ### Examples
 
 ```sh
-notesview serve                            # serve current directory
-notesview serve --path ~/notes            # serve a specific directory
-notesview serve --path ~/notes/todo.md    # open a specific file, serve its directory
-notesview serve -p 8080                   # use a fixed port
-notesview serve --open                    # open browser on start
-notesview serve --editor=code             # use VS Code to open files
+nview serve                            # serve current directory
+nview serve --path ~/notes            # serve a specific directory
+nview serve --path ~/notes/todo.md    # open a specific file, serve its directory
+nview serve -p 8080                   # use a fixed port
+nview serve --open                    # open browser on start
+nview serve --editor=code             # use VS Code to open files
 ```
 
 ## Development

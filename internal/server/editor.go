@@ -130,7 +130,8 @@ func shellJoin(argv []string) string {
 }
 
 // shellQuote wraps s in single quotes, escaping any embedded single quotes
-// via the classic `'\''` dance. This is POSIX-safe for any string.
+// with the `'\''` pattern, which is POSIX-safe for embedding a single quote
+// inside single-quoted strings.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

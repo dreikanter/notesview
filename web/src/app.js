@@ -1,4 +1,4 @@
-// notesview front-end bootstrap.
+// nview front-end bootstrap.
 //
 // Loads HTMX + SSE support, runs syntax highlighting on every swap, owns
 // sidebar toggle + section collapse, and delegates the sidebar tree to
@@ -45,7 +45,7 @@ function toggleSidebar() {
   const open = root.classList.toggle('sidebar-open')
   if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
   try {
-    localStorage.setItem('notesview.sidebarOpen', open ? '1' : '0')
+    localStorage.setItem('nview.sidebarOpen', open ? '1' : '0')
   } catch (e) {}
 }
 
@@ -58,7 +58,7 @@ function wireThemeToggle() {
     const isDark = root.classList.toggle('dark')
     btn.setAttribute('aria-pressed', isDark ? 'true' : 'false')
     try {
-      localStorage.setItem('notesview.theme', isDark ? 'dark' : 'light')
+      localStorage.setItem('nview.theme', isDark ? 'dark' : 'light')
     } catch (e) {}
     const light = document.getElementById('hljs-light')
     const dark = document.getElementById('hljs-dark')
@@ -68,11 +68,11 @@ function wireThemeToggle() {
 }
 
 function getLS(key, fallback) {
-  try { return localStorage.getItem('notesview.' + key) || fallback } catch (e) { return fallback }
+  try { return localStorage.getItem('nview.' + key) || fallback } catch (e) { return fallback }
 }
 
 function setLS(key, value) {
-  try { localStorage.setItem('notesview.' + key, value) } catch (e) {}
+  try { localStorage.setItem('nview.' + key, value) } catch (e) {}
 }
 
 // --- Section collapse/expand (FILES and TAGS headers) ---

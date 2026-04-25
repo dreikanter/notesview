@@ -1,4 +1,4 @@
-// Package logging builds structured loggers (log/slog) for notesview from a
+// Package logging builds structured loggers (log/slog) for nview from a
 // small Config value. The goal is one place where log sinks, level, and
 // format are decided, so the rest of the codebase just takes a *slog.Logger.
 package logging

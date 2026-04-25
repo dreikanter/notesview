@@ -9,15 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/dreikanter/notes-view/internal/logging"
-	"github.com/dreikanter/notes-view/internal/server"
+	"github.com/dreikanter/nview/internal/logging"
+	"github.com/dreikanter/nview/internal/server"
 	"github.com/spf13/cobra"
 )
 
@@ -28,26 +28,26 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().IntP("port", "p", 0, "port to listen on (default: $NOTESVIEW_PORT, auto)")
+	serveCmd.Flags().IntP("port", "p", 0, "port to listen on (default: $NVIEW_PORT, auto)")
 	serveCmd.Flags().BoolP("open", "o", false, "open browser on start")
-	serveCmd.Flags().String("editor", "", "editor command (default: $NOTESVIEW_EDITOR, $VISUAL, $EDITOR)")
-	serveCmd.Flags().String("path", "", "notes root path or file (default: $NOTESVIEW_PATH, $NOTES_PATH, .)")
-	serveCmd.Flags().String("log-level", "", "log level: debug, info, warn, error (default: $NOTESVIEW_LOG_LEVEL, info)")
-	serveCmd.Flags().String("log-format", "", "log output format: text or json (default: $NOTESVIEW_LOG_FORMAT, text)")
-	serveCmd.Flags().String("log-file", "", "additional log sink file path (default: $NOTESVIEW_LOG_FILE)")
+	serveCmd.Flags().String("editor", "", "editor command (default: $NVIEW_EDITOR, $VISUAL, $EDITOR)")
+	serveCmd.Flags().String("path", "", "notes root path or file (default: $NVIEW_PATH, $NOTES_PATH, .)")
+	serveCmd.Flags().String("log-level", "", "log level: debug, info, warn, error (default: $NVIEW_LOG_LEVEL, info)")
+	serveCmd.Flags().String("log-format", "", "log output format: text or json (default: $NVIEW_LOG_FORMAT, text)")
+	serveCmd.Flags().String("log-file", "", "additional log sink file path (default: $NVIEW_LOG_FILE)")
 	rootCmd.AddCommand(serveCmd)
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	if port == 0 && !cmd.Flags().Changed("port") {
-		if v := os.Getenv("NOTESVIEW_PORT"); v != "" {
+		if v := os.Getenv("NVIEW_PORT"); v != "" {
 			p, err := strconv.Atoi(v)
 			if err != nil {
-				return fmt.Errorf("invalid NOTESVIEW_PORT %q: %w", v, err)
+				return fmt.Errorf("invalid NVIEW_PORT %q: %w", v, err)
 			}
 			if p < 0 || p > 65535 {
-				return fmt.Errorf("NOTESVIEW_PORT %d out of range 0..65535", p)
+				return fmt.Errorf("NVIEW_PORT %d out of range 0..65535", p)
 			}
 			port = p
 		}
@@ -60,7 +60,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logFile, _ := cmd.Flags().GetString("log-file")
 
 	if editor == "" {
-		for _, env := range []string{"NOTESVIEW_EDITOR", "VISUAL", "EDITOR"} {
+		for _, env := range []string{"NVIEW_EDITOR", "VISUAL", "EDITOR"} {
 			if v := os.Getenv(env); v != "" {
 				editor = v
 				break
@@ -69,7 +69,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	if path == "" {
-		for _, env := range []string{"NOTESVIEW_PATH", "NOTES_PATH"} {
+		for _, env := range []string{"NVIEW_PATH", "NOTES_PATH"} {
 			if v := os.Getenv(env); v != "" {
 				path = v
 				break
@@ -82,13 +82,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	path = expandTilde(path)
 
 	if logLevel == "" {
-		logLevel = os.Getenv("NOTESVIEW_LOG_LEVEL")
+		logLevel = os.Getenv("NVIEW_LOG_LEVEL")
 	}
 	if logFormat == "" {
-		logFormat = os.Getenv("NOTESVIEW_LOG_FORMAT")
+		logFormat = os.Getenv("NVIEW_LOG_FORMAT")
 	}
 	if logFile == "" {
-		logFile = os.Getenv("NOTESVIEW_LOG_FILE")
+		logFile = os.Getenv("NVIEW_LOG_FILE")
 	}
 
 	logger, logCloser, err := logging.New(logging.Config{
@@ -122,7 +122,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	baseURL := "http://" + listener.Addr().String()
-	logger.Info("notesview serving", "root", root, "url", baseURL)
+	logger.Info("nview serving", "root", root, "url", baseURL)
 
 	if open {
 		target := baseURL

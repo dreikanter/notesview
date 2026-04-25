@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreikanter/notes-view/internal/index"
-	"github.com/dreikanter/notes-view/internal/logging"
+	"github.com/dreikanter/nview/internal/index"
+	"github.com/dreikanter/nview/internal/logging"
 	"github.com/fsnotify/fsnotify"
 )
 

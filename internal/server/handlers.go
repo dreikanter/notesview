@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreikanter/notes-view/internal/index"
-	"github.com/dreikanter/notes-view/internal/renderer"
+	"github.com/dreikanter/nview/internal/index"
+	"github.com/dreikanter/nview/internal/renderer"
 )
 
 // buildInitialJSON returns a pre-encoded JSON object that the TreeView
@@ -281,7 +281,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.editor == "" {
-		http.Error(w, "no editor configured (set NOTESVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
+		http.Error(w, "no editor configured (set NVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
 		return
 	}
 
@@ -292,7 +292,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	// pass the `== ""` guard but yield zero fields.
 	fields := strings.Fields(s.editor)
 	if len(fields) == 0 {
-		http.Error(w, "no editor configured (set NOTESVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
+		http.Error(w, "no editor configured (set NVIEW_EDITOR, VISUAL, or EDITOR)", http.StatusBadRequest)
 		return
 	}
 	editorBin, editorArgs := fields[0], fields[1:]

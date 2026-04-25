@@ -1,4 +1,4 @@
-module github.com/dreikanter/notes-view
+module github.com/dreikanter/nview
 
 go 1.25.7
 

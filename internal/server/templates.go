@@ -6,8 +6,8 @@ import (
 	"html/template"
 	"io"
 
-	"github.com/dreikanter/notes-view/internal/index"
-	"github.com/dreikanter/notes-view/web"
+	"github.com/dreikanter/nview/internal/index"
+	"github.com/dreikanter/nview/web"
 )
 
 var faviconDataURI = mustFaviconDataURI()
@@ -120,14 +120,14 @@ func loadTemplates() (*templateSet, error) {
 func parsePage(page string) (*template.Template, error) {
 	files := append([]string{}, partials...)
 	files = append(files, page)
-	return template.New("notesview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, files...)
+	return template.New("nview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, files...)
 }
 
 // parsePartial loads only the files needed to render one partial
 // template, so a partial response doesn't accidentally include the
 // full layout.
 func parsePartial(name string) (*template.Template, error) {
-	return template.New("notesview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/entry_list.html", "templates/sidebar_tree.html")
+	return template.New("nview").Funcs(templateFuncMap).ParseFS(web.TemplatesFS, "templates/"+name+".html", "templates/entry_list.html", "templates/sidebar_tree.html")
 }
 
 func (t *templateSet) renderView(w io.Writer, data ViewData) error {
