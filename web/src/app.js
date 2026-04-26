@@ -2,7 +2,7 @@
 //
 // Loads HTMX + SSE support, runs syntax highlighting on swaps, owns sidebar
 // toggle/navigation, and keeps note updates flowing through the unified
-// /events endpoint.
+// /events endpoint with per-view scope filtering.
 
 import htmx from 'htmx.org'
 import 'htmx-ext-sse'
@@ -16,26 +16,27 @@ function highlightIn(root) {
 }
 
 let es = null
-let watchedNote = ''
+let watchedNoteID = 0
 
-function encodePath(p) {
-  if (!p) return ''
-  return p.split('/').map(encodeURIComponent).join('/')
-}
-
-function decodeHref(href) {
+function currentNoteID() {
   const card = document.getElementById('note-card')
-  if (card) return card.getAttribute('data-note-path') || ''
-  return ''
+  if (!card) return 0
+  const v = parseInt(card.getAttribute('data-note-id') || '', 10)
+  return Number.isFinite(v) && v > 0 ? v : 0
 }
 
-function openEventSource(notePath) {
+// openEventStream opens an SSE connection scoped to either the current
+// note (id > 0) or the list view (id === 0). Idempotent for the same scope:
+// reopens only when the desired scope changes.
+function openEventStream(noteID) {
+  if (es && watchedNoteID === noteID) return
   if (es) es.close()
-  watchedNote = notePath || ''
-  window.__tvWatchedNote = watchedNote
-  es = new EventSource('/events' + (watchedNote ? '?watch=' + encodeURIComponent(watchedNote) : ''))
-  es.addEventListener('change', () => {
-    if (!watchedNote) return
+  watchedNoteID = noteID
+  const url = noteID > 0
+    ? '/events?scope=note&id=' + encodeURIComponent(noteID)
+    : '/events?scope=list'
+  es = new EventSource(url)
+  es.addEventListener('note', () => {
     const card = document.getElementById('note-card')
     const href = card?.getAttribute('data-view-href') || location.pathname
     htmx.ajax('GET', href, {
@@ -44,20 +45,69 @@ function openEventSource(notePath) {
       headers: { 'HX-Target': 'note-pane' },
     })
   })
-  es.addEventListener('dir-changed', () => {
-    const selected = watchedNote ? '?selected=' + encodeURIComponent(watchedNote) : ''
-    htmx.ajax('GET', '/sidebar' + selected, {
-      target: '#sidebar',
-      swap: 'innerHTML',
-    })
+  es.addEventListener('list', () => {
+    refreshSidebar()
+    refreshListPane()
   })
+}
+
+function refreshSidebar() {
+  const card = document.getElementById('note-card')
+  const selectedPath = card?.getAttribute('data-note-path') || ''
+  const qs = selectedPath ? '?selected=' + encodeURIComponent(selectedPath) : ''
+  htmx.ajax('GET', '/sidebar' + qs, {
+    target: '#sidebar',
+    swap: 'innerHTML',
+  })
+}
+
+// refreshListPane reloads the dir-listing partial in the note pane when the
+// current view is a tag/type/date list (i.e., not a single note).
+function refreshListPane() {
+  if (currentNoteID() > 0) return
+  const path = location.pathname
+  if (!path.startsWith('/tags') && !path.startsWith('/types') && !path.startsWith('/dates')) return
+  htmx.ajax('GET', path, {
+    target: '#note-pane',
+    swap: 'innerHTML',
+    headers: { 'HX-Target': 'note-pane' },
+  })
+}
+
+// reconcileIndex POSTs /api/index/refresh and refreshes UI when the diff
+// is non-empty. Throttled so rapid visibility flips (focus/blur, multi-
+// monitor) don't hammer the store-walking endpoint.
+const RECONCILE_MIN_INTERVAL_MS = 5000
+let lastReconcileAt = 0
+
+function reconcileIndex(force) {
+  const now = Date.now()
+  if (!force && now - lastReconcileAt < RECONCILE_MIN_INTERVAL_MS) return
+  lastReconcileAt = now
+  fetch('/api/index/refresh', { method: 'POST' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((diff) => {
+      if (!diff) return
+      if (diff.added || diff.updated || diff.deleted) {
+        refreshSidebar()
+        refreshListPane()
+      }
+    })
+    .catch(() => {})
 }
 
 document.addEventListener('DOMContentLoaded', function () {
   highlightIn(document)
   wireSidebarToggle()
   wireThemeToggle()
-  openEventSource(document.body.getAttribute('data-note-path') || '')
+  wireRefreshButton()
+  openEventStream(currentNoteID())
+})
+
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') {
+    reconcileIndex()
+  }
 })
 
 function wireSidebarToggle() {
@@ -96,6 +146,12 @@ function wireThemeToggle() {
   })
 }
 
+function wireRefreshButton() {
+  const btn = document.getElementById('index-refresh')
+  if (!btn) return
+  btn.addEventListener('click', () => reconcileIndex(true))
+}
+
 function loadIntoPane(href, state) {
   htmx.ajax('GET', href, {
     target: '#note-pane',
@@ -108,7 +164,7 @@ function loadIntoPane(href, state) {
 window.selectTag = function(tag, skipPush) {
   const href = '/tags/' + encodeURIComponent(tag)
   loadIntoPane(href, skipPush ? null : { type: 'tag', tag: tag, href: href })
-  openEventSource('')
+  openEventStream(0)
 }
 
 let pendingNoteScrollReset = false
@@ -134,7 +190,10 @@ document.addEventListener('click', function(e) {
     pendingNoteScrollReset = true
     const stateType = action === 'selectNote' ? 'note' : 'index'
     loadIntoPane(href, { type: stateType, href })
-    openEventSource(action === 'selectNote' ? decodeHref(href) : '')
+    // For note links, the htmx:afterSwap handler will read the new
+    // data-note-id from the freshly-rendered partial. List links open
+    // immediately on the list-scope stream.
+    if (action !== 'selectNote') openEventStream(0)
   }
 })
 
@@ -155,15 +214,15 @@ window.addEventListener('popstate', function(e) {
   const state = e.state
   const href = state?.href || location.pathname
   loadIntoPane(href, null)
-  openEventSource(href.startsWith('/n/') ? decodeHref(href) : '')
+  // Note views will resubscribe on htmx:afterSwap once the partial loads;
+  // non-note views can subscribe immediately.
+  if (!href.startsWith('/n/')) openEventStream(0)
 })
 
 document.body.addEventListener('htmx:afterSwap', function(e) {
   highlightIn(e.target)
   if (e.target && e.target.id === 'note-pane') {
-    const noteCard = e.target.querySelector('[data-note-path]')
-    const notePath = noteCard ? noteCard.getAttribute('data-note-path') : ''
-    if (notePath) openEventSource(notePath)
+    openEventStream(currentNoteID())
   }
   if (pendingNoteScrollReset && e.target && e.target.id === 'note-pane') {
     e.target.scrollTop = 0

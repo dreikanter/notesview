@@ -3,6 +3,7 @@
   id="note-card"
   class="note-card mx-auto max-w-[900px] border border-gray-200 dark:border-gray-800 rounded-md bg-white dark:bg-gray-900 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4"
   data-note-path="{{ .NotePath }}"
+  data-note-id="{{ with .Note }}{{ .ID }}{{ end }}"
   data-view-href="{{ .ViewHref }}">
   <div class="px-6 py-6 max-md:px-4 max-md:py-5 max-[480px]:px-3 max-[480px]:py-4">
     {{ if .NotePath }}

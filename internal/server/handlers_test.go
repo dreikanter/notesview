@@ -85,6 +85,37 @@ func TestNoteHandlerByID(t *testing.T) {
 	}
 }
 
+func TestRefreshEndpoint(t *testing.T) {
+	srv, dir := setupTestServer(t)
+	handler := srv.Routes()
+
+	// Drop in a new note out-of-band — without the watcher running,
+	// the index won't see it until Reconcile is called.
+	os.MkdirAll(filepath.Join(dir, "2026", "05"), 0o755)
+	os.WriteFile(
+		filepath.Join(dir, "2026", "05", "20260501_4242_drift.md"),
+		[]byte("---\ntitle: Drift\n---\n# Drift\n"),
+		0o644,
+	)
+
+	req := httptest.NewRequest("POST", "/api/index/refresh", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"added":1`) {
+		t.Errorf("expected added:1 in response, got: %s", body)
+	}
+
+	// After refresh the new note should be resolvable.
+	if _, ok := srv.index.NoteByID(4242); !ok {
+		t.Error("expected note 4242 to be indexed after refresh")
+	}
+}
+
 func TestNoteHandler404(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()

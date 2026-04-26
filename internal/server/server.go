@@ -48,7 +48,7 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 		logger:    logger,
 		renderer:  renderer.NewRenderer(idx),
 		index:     idx,
-		events:    NewEventHub(root, logger, idx),
+		events:    NewEventHub(store, logger, idx),
 		templates: tpls,
 	}, nil
 }
@@ -73,6 +73,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /dates/{year}/{month}/{day}", s.handleDateDay)
 	mux.HandleFunc("POST /api/edit/{id}", s.handleEdit)
 	mux.HandleFunc("GET /api/raw/{id}", s.handleRaw)
+	mux.HandleFunc("POST /api/index/refresh", s.handleRefresh)
 	mux.HandleFunc("GET /sidebar", s.handleSidebar)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tree/list", s.handleTreeList)
@@ -106,7 +107,7 @@ func (s *Server) StartWatcher() error {
 	return s.events.Start()
 }
 
-// Shutdown stops the event hub, closing the fsnotify watcher and draining
+// Shutdown stops the event hub, closing the watcher and draining
 // connected clients.
 func (s *Server) Shutdown() {
 	s.events.Stop()

@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"testing"
 	"time"
 
@@ -612,67 +611,220 @@ func TestNoteEntryID(t *testing.T) {
 	}
 }
 
-// --- Rebuild ---
+// --- Apply ---
 
-func TestRebuildDoneReflectsLatestState(t *testing.T) {
+func TestApplyCreatedInsertsEntry(t *testing.T) {
 	s := note.NewMemStore()
 	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
-		t.Fatalf("initial Build: %v", err)
+		t.Fatalf("Build: %v", err)
 	}
 
-	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Title: "Fresh"}})
-
-	if _, ok := idx.NoteEntryByRel("2026/01/20260101_1.md"); ok {
-		t.Fatal("entry should not be indexed before Rebuild")
+	stored, err := s.Put(note.Entry{ID: 7, Meta: note.Meta{
+		CreatedAt: day(2026, 4, 1), Slug: "fresh", Title: "Fresh", Tags: []string{"new"},
+	}})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
 	}
+	idx.Apply(note.Event{Type: note.EventCreated, ID: stored.ID})
 
-	<-idx.Rebuild()
-
-	entry, ok := idx.NoteEntryByRel("2026/01/20260101_1.md")
+	rel := "2026/04/20260401_7_fresh.md"
+	entry, ok := idx.NoteEntryByRel(rel)
 	if !ok {
-		t.Fatal("entry should be indexed after Rebuild done fires")
+		t.Fatal("expected entry to be indexed after Apply")
 	}
 	if entry.Title != "Fresh" {
 		t.Errorf("Title = %q, want Fresh", entry.Title)
 	}
+	if got := idx.NotesByTag("new"); len(got) != 1 || got[0] != rel {
+		t.Errorf("NotesByTag(new) = %v, want [%q]", got, rel)
+	}
+	if tags := idx.Tags(); len(tags) != 1 || tags[0] != "new" {
+		t.Errorf("Tags() = %v, want [new]", tags)
+	}
+	gotRel, ok := idx.NoteByID(stored.ID)
+	if !ok || gotRel != rel {
+		t.Errorf("NoteByID(%d) = %q ok=%v, want %q", stored.ID, gotRel, ok, rel)
+	}
+	gotRel, ok = idx.Resolve("fresh")
+	if !ok || gotRel != rel {
+		t.Errorf("Resolve(fresh) = %q ok=%v, want %q", gotRel, ok, rel)
+	}
 }
 
-func TestRebuildCoalescesRequestsDuringInflight(t *testing.T) {
+func TestApplyUpdatedReplacesBuckets(t *testing.T) {
 	s := note.NewMemStore()
-	// Prime the store with enough entries that Build takes measurable time.
-	for i := 1; i <= 200; i++ {
-		putEntry(s, note.Entry{ID: i, Meta: note.Meta{CreatedAt: day(2026, 1, i%28+1), Title: "T"}})
+	stored, err := s.Put(note.Entry{ID: 1, Meta: note.Meta{
+		CreatedAt: day(2026, 1, 1), Slug: "alpha", Title: "Alpha", Type: "journal", Tags: []string{"a"},
+	}})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
 	}
 
+	if got := idx.NotesByTag("a"); len(got) != 1 {
+		t.Fatalf("baseline NotesByTag(a) = %v, want 1", got)
+	}
+
+	// Update: drop tag "a", add "b"; rename slug.
+	updated := stored
+	updated.Meta.Tags = []string{"b"}
+	updated.Meta.Slug = "beta"
+	updated.Meta.Title = "Beta"
+	if _, err := s.Put(updated); err != nil {
+		t.Fatalf("Put updated: %v", err)
+	}
+	idx.Apply(note.Event{Type: note.EventUpdated, ID: stored.ID})
+
+	if got := idx.NotesByTag("a"); len(got) != 0 {
+		t.Errorf("after update NotesByTag(a) = %v, want empty", got)
+	}
+	newRel := "2026/01/20260101_1_beta.journal.md"
+	if got := idx.NotesByTag("b"); len(got) != 1 || got[0] != newRel {
+		t.Errorf("after update NotesByTag(b) = %v, want [%q]", got, newRel)
+	}
+	if _, ok := idx.NoteEntryByRel("2026/01/20260101_1_alpha.journal.md"); ok {
+		t.Errorf("old rel-path should no longer be indexed")
+	}
+	if _, ok := idx.Resolve("alpha"); ok {
+		t.Errorf("Resolve(alpha) should be gone after update")
+	}
+	if rel, ok := idx.Resolve("beta"); !ok || rel != newRel {
+		t.Errorf("Resolve(beta) = %q ok=%v, want %q", rel, ok, newRel)
+	}
+}
+
+func TestApplyDeletedRemovesEntry(t *testing.T) {
+	s := note.NewMemStore()
+	stored, err := s.Put(note.Entry{ID: 1, Meta: note.Meta{
+		CreatedAt: day(2026, 1, 1), Slug: "doomed", Tags: []string{"a", "b"}, Type: "x",
+	}})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if err := s.Delete(stored.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	idx.Apply(note.Event{Type: note.EventDeleted, ID: stored.ID})
+
+	if _, ok := idx.NoteByID(stored.ID); ok {
+		t.Errorf("NoteByID after delete should miss")
+	}
+	if got := idx.Tags(); len(got) != 0 {
+		t.Errorf("Tags() after delete = %v, want empty", got)
+	}
+	if got := idx.Types(); len(got) != 0 {
+		t.Errorf("Types() after delete = %v, want empty", got)
+	}
+	if _, ok := idx.Resolve("doomed"); ok {
+		t.Errorf("Resolve(doomed) should miss after delete")
+	}
+}
+
+func TestApplyMatchesFullRebuild(t *testing.T) {
+	// After a sequence of incremental Apply calls, the index state must
+	// equal a fresh Build over the same store contents.
+	s := note.NewMemStore()
 	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("initial Build: %v", err)
 	}
 
-	first := idx.Rebuild()
-
-	// Add a new entry while the first rebuild is in flight.
-	lateID := 9999
-	putEntry(s, note.Entry{ID: lateID, Meta: note.Meta{CreatedAt: day(2026, 6, 15), Title: "Late"}})
-
-	second := idx.Rebuild()
-
-	select {
-	case <-second:
-		select {
-		case <-first:
-		default:
-			t.Fatal("second done closed before in-flight build finished")
+	mut := []struct {
+		entry note.Entry
+		typ   note.EventType
+	}{
+		{note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Slug: "a", Tags: []string{"x"}, Type: "journal"}}, note.EventCreated},
+		{note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Slug: "b", Tags: []string{"x", "y"}, Type: "journal"}}, note.EventCreated},
+		{note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 1, 3), Slug: "c", Tags: []string{"y"}, Type: "task"}}, note.EventCreated},
+	}
+	for _, m := range mut {
+		if _, err := s.Put(m.entry); err != nil {
+			t.Fatalf("Put: %v", err)
 		}
-	case <-first:
+		idx.Apply(note.Event{Type: m.typ, ID: m.entry.ID})
 	}
 
-	<-second
+	// Update entry 2 to drop tag "x"; delete entry 3.
+	upd := note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Slug: "b2", Tags: []string{"y"}, Type: "journal"}}
+	if _, err := s.Put(upd); err != nil {
+		t.Fatalf("Put upd: %v", err)
+	}
+	idx.Apply(note.Event{Type: note.EventUpdated, ID: 2})
+	if err := s.Delete(3); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	idx.Apply(note.Event{Type: note.EventDeleted, ID: 3})
 
-	lateRel := "2026/06/20260615_" + strconv.Itoa(lateID) + ".md"
-	if _, ok := idx.NoteEntryByRel(lateRel); !ok {
-		t.Errorf("late entry %s must be indexed once second Rebuild's done fires", lateRel)
+	// Build a second index from scratch and compare projections.
+	expect := New(s, nil)
+	if err := expect.Build(); err != nil {
+		t.Fatalf("expect Build: %v", err)
+	}
+
+	if a, b := idx.Tags(), expect.Tags(); !equalStrings(a, b) {
+		t.Errorf("Tags mismatch: got %v want %v", a, b)
+	}
+	if a, b := idx.Types(), expect.Types(); !equalStrings(a, b) {
+		t.Errorf("Types mismatch: got %v want %v", a, b)
+	}
+	for _, tag := range expect.Tags() {
+		if a, b := idx.NotesByTag(tag), expect.NotesByTag(tag); !equalStrings(a, b) {
+			t.Errorf("NotesByTag(%s) mismatch: got %v want %v", tag, a, b)
+		}
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// --- Reconcile ---
+
+func TestReconcileAppliesDiff(t *testing.T) {
+	dir := t.TempDir()
+	store := note.NewOSStore(dir)
+	idx := New(store, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// Add a note out-of-band (simulating a missed event).
+	stored, err := store.Put(note.Entry{ID: 5, Meta: note.Meta{
+		CreatedAt: day(2026, 5, 1), Slug: "drift", Tags: []string{"new"},
+	}})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if _, ok := idx.NoteByID(stored.ID); ok {
+		t.Fatal("entry should not yet be indexed before Reconcile")
+	}
+
+	diff, err := idx.Reconcile()
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(diff.Added) != 1 || len(diff.Updated) != 0 || len(diff.Removed) != 0 {
+		t.Errorf("counts = %d/%d/%d, want 1/0/0", len(diff.Added), len(diff.Updated), len(diff.Removed))
+	}
+	if _, ok := idx.NoteByID(stored.ID); !ok {
+		t.Error("entry should be indexed after Reconcile")
 	}
 }
 
