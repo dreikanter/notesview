@@ -1,8 +1,6 @@
 package index
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,40 +8,50 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dreikanter/notesctl/note"
 )
 
-func setupNoteIndexDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	mustMkdirAll(t, filepath.Join(dir, "2026", "03"))
-	mustMkdirAll(t, filepath.Join(dir, "2026", "01"))
-	mustWriteFile(t, filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), "# Todo\n")
-	mustWriteFile(t, filepath.Join(dir, "2026", "03", "20260330_9198.md"), "# Note\n")
-	mustWriteFile(t, filepath.Join(dir, "2026", "01", "20260102_8814_report.md"), "# Report\n")
-	// File with a variable-width-year UID
-	mustWriteFile(t, filepath.Join(dir, "12026_0001.md"), "# Future\n")
-	// Non-UID file — indexed as an entry with UID="" but not reachable via NoteByUID
-	mustWriteFile(t, filepath.Join(dir, "README.md"), "# Readme\n")
-	return dir
+// day returns a UTC midnight time for the given year, month, day — keeps
+// test fixtures terse.
+func day(year int, month time.Month, d int) time.Time {
+	return time.Date(year, month, d, 0, 0, 0, 0, time.UTC)
 }
 
-func mustMkdirAll(t *testing.T, p string) {
-	t.Helper()
-	if err := os.MkdirAll(p, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", p, err)
+// putEntry is a helper that adds an entry to a MemStore. The entry's ID must
+// be non-zero; CreatedAt must be non-zero. Panics on error so callers don't
+// need error-handling boilerplate.
+func putEntry(s *note.MemStore, e note.Entry) {
+	if _, err := s.Put(e); err != nil {
+		panic(err)
 	}
 }
 
-func mustWriteFile(t *testing.T, p, content string) {
-	t.Helper()
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", p, err)
-	}
+// singleEntryStore returns a MemStore containing one note with the given
+// fields populated.
+func singleEntryStore(id int, createdAt time.Time, slug, noteType string, tags []string) *note.MemStore {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{
+		ID: id,
+		Meta: note.Meta{
+			CreatedAt: createdAt,
+			Slug:      slug,
+			Type:      noteType,
+			Tags:      tags,
+		},
+	})
+	return s
 }
+
+// --- NoteByUID ---
 
 func TestNoteByUID(t *testing.T) {
-	dir := setupNoteIndexDir(t)
-	idx := New(dir, nil)
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 9201, Meta: note.Meta{CreatedAt: day(2026, 3, 31), Slug: "todo"}})
+	putEntry(s, note.Entry{ID: 9198, Meta: note.Meta{CreatedAt: day(2026, 3, 30)}})
+	putEntry(s, note.Entry{ID: 8814, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Slug: "report"}})
+
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -56,7 +64,6 @@ func TestNoteByUID(t *testing.T) {
 		{"20260331_9201", "2026/03/20260331_9201_todo.md", true},
 		{"20260330_9198", "2026/03/20260330_9198.md", true},
 		{"20260102_8814", "2026/01/20260102_8814_report.md", true},
-		{"12026_0001", "12026_0001.md", true},
 		{"99999999_0000", "", false},
 	}
 	for _, tt := range cases {
@@ -73,8 +80,8 @@ func TestNoteByUID(t *testing.T) {
 }
 
 func TestNoteByUIDUsesForwardSlashes(t *testing.T) {
-	dir := setupNoteIndexDir(t)
-	idx := New(dir, nil)
+	s := singleEntryStore(9201, day(2026, 3, 31), "todo", "", nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -87,14 +94,31 @@ func TestNoteByUIDUsesForwardSlashes(t *testing.T) {
 	}
 }
 
-func TestBuildReturnsNonPermissionError(t *testing.T) {
-	idx := New("/nonexistent-root-path-that-does-not-exist", nil)
+func TestNoteByUIDMalformed(t *testing.T) {
+	idx := New(note.NewMemStore(), nil)
+	if _, ok := idx.NoteByUID("nounderscore"); ok {
+		t.Error("NoteByUID(no underscore) should return false")
+	}
+	if _, ok := idx.NoteByUID("20260331_abc"); ok {
+		t.Error("NoteByUID(non-numeric id) should return false")
+	}
+	if _, ok := idx.NoteByUID(""); ok {
+		t.Error("NoteByUID('') should return false")
+	}
+}
+
+// --- Build errors ---
+
+func TestBuildReturnsErrorForBrokenStore(t *testing.T) {
+	// OSStore on a nonexistent root returns an error from All().
+	store := note.NewOSStore("/nonexistent-root-that-does-not-exist")
+	idx := New(store, nil)
 	if err := idx.Build(); err == nil {
 		t.Fatal("expected Build to return an error for nonexistent root")
 	}
 }
 
-func TestBuildSkipsUnreadableDirs(t *testing.T) {
+func TestBuildSkipsUnreadableMonthDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-based test not reliable on Windows")
 	}
@@ -102,19 +126,22 @@ func TestBuildSkipsUnreadableDirs(t *testing.T) {
 		t.Skip("permission-based test not reliable when running as root")
 	}
 
-	dir := setupNoteIndexDir(t)
-	unreadable := filepath.Join(dir, "2026", "secret")
-	mustMkdirAll(t, unreadable)
-	mustWriteFile(t, filepath.Join(unreadable, "20260401_0001.md"), "# Secret\n")
-	if err := os.Chmod(unreadable, 0o000); err != nil {
+	dir := t.TempDir()
+	// Readable note in 2026/03/
+	mustMkdirAll(t, filepath.Join(dir, "2026", "03"))
+	mustWriteFile(t, filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"),
+		"---\ntitle: Todo\n---\n# Todo\n")
+
+	// Unreadable month dir 2026/04/ — OSStore silently skips it.
+	mustMkdirAll(t, filepath.Join(dir, "2026", "04"))
+	mustWriteFile(t, filepath.Join(dir, "2026", "04", "20260401_0001.md"), "# Secret\n")
+	if err := os.Chmod(filepath.Join(dir, "2026", "04"), 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "2026", "04"), 0o755) })
 
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
-
-	idx := New(dir, logger)
+	store := note.NewOSStore(dir)
+	idx := New(store, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build returned unexpected error: %v", err)
 	}
@@ -122,160 +149,18 @@ func TestBuildSkipsUnreadableDirs(t *testing.T) {
 		t.Error("expected 20260331_9201 to be indexed")
 	}
 	if _, ok := idx.NoteByUID("20260401_0001"); ok {
-		t.Error("expected 20260401_0001 to be skipped")
-	}
-	if !strings.Contains(buf.String(), "permission denied") {
-		t.Errorf("expected permission denied warning in log, got: %s", buf.String())
+		t.Error("expected 20260401_0001 to be skipped (unreadable dir)")
 	}
 }
 
-func TestParseFrontmatterInlineTags(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "---\ntitle: Hello\ntags: [golang, web]\naliases: [\"h\", 'hi']\n---\n# Body\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if fm.Title != "Hello" {
-		t.Errorf("Title = %q, want %q", fm.Title, "Hello")
-	}
-	if len(fm.Tags) != 2 || fm.Tags[0] != "golang" || fm.Tags[1] != "web" {
-		t.Errorf("Tags = %v, want [golang web]", fm.Tags)
-	}
-	if len(fm.Aliases) != 2 || fm.Aliases[0] != "h" || fm.Aliases[1] != "hi" {
-		t.Errorf("Aliases = %v, want [h hi]", fm.Aliases)
-	}
-}
-
-func TestParseFrontmatterBlockList(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "---\ntags:\n  - alpha\n  - beta\naliases:\n  - a1\n---\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if len(fm.Tags) != 2 || fm.Tags[0] != "alpha" || fm.Tags[1] != "beta" {
-		t.Errorf("Tags = %v", fm.Tags)
-	}
-	if len(fm.Aliases) != 1 || fm.Aliases[0] != "a1" {
-		t.Errorf("Aliases = %v", fm.Aliases)
-	}
-}
-
-func TestParseFrontmatterMissingFences(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "# No frontmatter here\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if fm.Title != "" || len(fm.Tags) != 0 || len(fm.Aliases) != 0 {
-		t.Errorf("expected zero-value frontmatter, got %+v", fm)
-	}
-}
-
-func TestParseFrontmatterMalformedYAMLIsError(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "---\ntags: [unterminated\n---\n")
-
-	_, err := parseFrontmatter(path)
-	if err == nil {
-		t.Fatal("expected YAML parse error, got nil")
-	}
-}
-
-func TestParseFrontmatterReadError(t *testing.T) {
-	_, err := parseFrontmatter("/nonexistent/file/path.md")
-	if err == nil {
-		t.Fatal("expected read error, got nil")
-	}
-}
-
-func TestParseFrontmatterDate(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "---\ndate: 2026-04-17\n---\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if fm.Date.Year() != 2026 || fm.Date.Month() != 4 || fm.Date.Day() != 17 {
-		t.Errorf("Date = %v, want 2026-04-17", fm.Date)
-	}
-}
-
-func TestParseFrontmatterEmptyFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if fm.Title != "" || len(fm.Tags) != 0 {
-		t.Errorf("expected zero-value frontmatter, got %+v", fm)
-	}
-}
-
-func TestParseFrontmatterEmptyBetweenFences(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	mustWriteFile(t, path, "---\n---\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if fm.Title != "" || len(fm.Tags) != 0 {
-		t.Errorf("expected zero-value frontmatter, got %+v", fm)
-	}
-}
-
-func TestParseFrontmatterIndentedTripleDashIsNotFence(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.md")
-	// Opening fence is valid. The body contains an indented "  ---"
-	// line inside a multi-line YAML value; it must NOT be treated as
-	// the closing fence.
-	mustWriteFile(t, path, "---\ndescription: |\n  ---\n  second line\ntags: [x]\n---\n")
-
-	fm, err := parseFrontmatter(path)
-	if err != nil {
-		t.Fatalf("parseFrontmatter: %v", err)
-	}
-	if len(fm.Tags) != 1 || fm.Tags[0] != "x" {
-		t.Errorf("Tags = %v, want [x]", fm.Tags)
-	}
-}
-
-func setupTagFixtures(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "note_golang_web.md"),
-		"---\ntitle: Golang Web\ntags: [golang, web]\n---\nContent.\n")
-	mustWriteFile(t, filepath.Join(dir, "note_golang_testing.md"),
-		"---\ntitle: Golang Testing\ntags:\n  - golang\n  - testing\n---\nContent.\n")
-	mustWriteFile(t, filepath.Join(dir, "note_no_tags.md"),
-		"---\ntitle: No Tags\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "note_empty_tags.md"),
-		"---\ntitle: Empty Tags\ntags: []\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "readme.txt"),
-		"not markdown")
-	return dir
-}
+// --- Tags ---
 
 func TestTagsSorted(t *testing.T) {
-	dir := setupTagFixtures(t)
-	idx := New(dir, nil)
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Tags: []string{"golang", "web"}}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Tags: []string{"golang", "testing"}}})
+
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -292,8 +177,11 @@ func TestTagsSorted(t *testing.T) {
 }
 
 func TestNotesByTag(t *testing.T) {
-	dir := setupTagFixtures(t)
-	idx := New(dir, nil)
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Tags: []string{"golang", "web"}}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Tags: []string{"golang", "testing"}}})
+
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -312,16 +200,14 @@ func TestNotesByTag(t *testing.T) {
 	}
 }
 
-func TestNotesByTagDeduplicatesWithinFile(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "dups.md"),
-		"---\ntags: [go, go]\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "one.md"),
-		"---\ntags: [go]\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "two.md"),
-		"---\ntags: [go]\n---\n")
+func TestNotesByTagDeduplicatesWithinEntry(t *testing.T) {
+	s := note.NewMemStore()
+	// MemStore does not deduplicate tags; the index must dedup on ingestion.
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Tags: []string{"go", "go"}}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Tags: []string{"go"}}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 1, 3), Tags: []string{"go"}}})
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -329,8 +215,8 @@ func TestNotesByTagDeduplicatesWithinFile(t *testing.T) {
 	if len(tags) != 1 || tags[0] != "go" {
 		t.Errorf("Tags() = %v, want [go]", tags)
 	}
-	// dups.md contributes exactly one "go" slot (within-file dedup);
-	// one.md and two.md each contribute one → total 3.
+	// Entry 1 contributes exactly one "go" slot after within-entry dedup;
+	// entries 2 and 3 each contribute one → total 3.
 	notes := idx.NotesByTag("go")
 	if len(notes) != 3 {
 		t.Errorf("NotesByTag(go) = %v, want 3 entries", notes)
@@ -338,328 +224,198 @@ func TestNotesByTagDeduplicatesWithinFile(t *testing.T) {
 }
 
 func TestNotesByTagSortedRelPaths(t *testing.T) {
-	dir := t.TempDir()
-	mustMkdirAll(t, filepath.Join(dir, "b"))
-	mustMkdirAll(t, filepath.Join(dir, "a"))
-	mustWriteFile(t, filepath.Join(dir, "b", "note.md"), "---\ntags: [t]\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "a", "note.md"), "---\ntags: [t]\n---\n")
+	s := note.NewMemStore()
+	// Same date, different IDs — rel-paths end up in different YYYY/MM dirs
+	// because we manipulate dates to ensure lexicographic ordering.
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 2, 1), Tags: []string{"t"}}})
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Tags: []string{"t"}}})
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	notes := idx.NotesByTag("t")
-	if len(notes) != 2 || notes[0] != "a/note.md" || notes[1] != "b/note.md" {
-		t.Errorf("NotesByTag(t) = %v, want [a/note.md b/note.md]", notes)
+	if len(notes) != 2 {
+		t.Fatalf("NotesByTag(t) = %v, want 2 entries", notes)
+	}
+	// Sorted lexicographically: 2026/01/... before 2026/02/...
+	if notes[0] >= notes[1] {
+		t.Errorf("NotesByTag(t) not sorted: %v", notes)
 	}
 }
 
-func TestNoteEntryTitle(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "a.md"), "---\ntitle: Hello World\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "b.md"), "# No frontmatter\n")
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	a, _ := idx.NoteEntryByRel("a.md")
-	if a.Title != "Hello World" {
-		t.Errorf("Title = %q, want Hello World", a.Title)
-	}
-	b, _ := idx.NoteEntryByRel("b.md")
-	if b.Title != "" {
-		t.Errorf("Title = %q, want empty", b.Title)
-	}
-}
-
-func TestNoteEntryDescription(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "a.md"),
-		"---\ndescription: A short summary\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "b.md"), "# No frontmatter\n")
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	a, _ := idx.NoteEntryByRel("a.md")
-	if a.Description != "A short summary" {
-		t.Errorf("Description = %q, want %q", a.Description, "A short summary")
-	}
-	b, _ := idx.NoteEntryByRel("b.md")
-	if b.Description != "" {
-		t.Errorf("Description = %q, want empty", b.Description)
-	}
-}
+// --- NoteEntryByRel ---
 
 func TestNoteEntryByRel(t *testing.T) {
-	dir := t.TempDir()
-	mustMkdirAll(t, filepath.Join(dir, "sub"))
-	mustWriteFile(t, filepath.Join(dir, "sub", "note.md"),
-		"---\ntitle: Nested\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "root.md"), "# Root\n")
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{
+		ID: 9201,
+		Meta: note.Meta{
+			CreatedAt: day(2026, 3, 31),
+			Slug:      "nested",
+			Title:     "Nested",
+		},
+	})
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 
-	got, ok := idx.NoteEntryByRel("sub/note.md")
+	got, ok := idx.NoteEntryByRel("2026/03/20260331_9201_nested.md")
 	if !ok {
-		t.Fatal("NoteEntryByRel(sub/note.md) = !ok, want ok")
+		t.Fatal("NoteEntryByRel = !ok, want ok")
 	}
 	if got.Title != "Nested" {
 		t.Errorf("Title = %q, want Nested", got.Title)
 	}
 
-	if _, ok := idx.NoteEntryByRel("root.md"); !ok {
-		t.Error("NoteEntryByRel(root.md) = !ok, want ok")
-	}
 	if _, ok := idx.NoteEntryByRel("missing.md"); ok {
 		t.Error("NoteEntryByRel(missing.md) = ok, want !ok")
 	}
 }
 
-// TestNoteEntryByRelReturnsDefensiveCopy pins that mutating the returned
-// entry's slice fields does not corrupt internal storage. Matches the
-// defensive-copy convention used by Tags and NotesByTag.
 func TestNoteEntryByRelReturnsDefensiveCopy(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "note.md"),
-		"---\ntags: [a, b]\naliases: [x, y]\n---\n")
-
-	idx := New(dir, nil)
+	st := note.NewMemStore()
+	putEntry(st, note.Entry{ID: 1, Meta: note.Meta{
+		CreatedAt: day(2026, 1, 1),
+		Tags:      []string{"a", "b"},
+		Aliases:   []string{"x", "y"},
+	}})
+	idx := New(st, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 
-	first, ok := idx.NoteEntryByRel("note.md")
+	rel := "2026/01/20260101_1.md"
+	first, ok := idx.NoteEntryByRel(rel)
 	if !ok {
 		t.Fatal("NoteEntryByRel = !ok, want ok")
 	}
 	first.Tags[0] = "MUTATED"
 	first.Aliases[0] = "MUTATED"
 
-	second, _ := idx.NoteEntryByRel("note.md")
+	second, _ := idx.NoteEntryByRel(rel)
 	if second.Tags[0] != "a" {
-		t.Errorf("Tags[0] = %q, want %q (caller mutation leaked into index)", second.Tags[0], "a")
+		t.Errorf("Tags[0] = %q, want %q (mutation leaked)", second.Tags[0], "a")
 	}
 	if second.Aliases[0] != "x" {
-		t.Errorf("Aliases[0] = %q, want %q (caller mutation leaked into index)", second.Aliases[0], "x")
+		t.Errorf("Aliases[0] = %q, want %q (mutation leaked)", second.Aliases[0], "x")
+	}
+}
+
+// --- NoteEntry fields ---
+
+func TestNoteEntryTitle(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Title: "Hello World"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	a, _ := idx.NoteEntryByRel("2026/01/20260101_1.md")
+	if a.Title != "Hello World" {
+		t.Errorf("Title = %q, want Hello World", a.Title)
+	}
+	b, _ := idx.NoteEntryByRel("2026/01/20260102_2.md")
+	if b.Title != "" {
+		t.Errorf("Title = %q, want empty", b.Title)
+	}
+}
+
+func TestNoteEntryDescription(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Description: "A short summary"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	a, _ := idx.NoteEntryByRel("2026/01/20260101_1.md")
+	if a.Description != "A short summary" {
+		t.Errorf("Description = %q, want %q", a.Description, "A short summary")
+	}
+	b, _ := idx.NoteEntryByRel("2026/01/20260102_2.md")
+	if b.Description != "" {
+		t.Errorf("Description = %q, want empty", b.Description)
 	}
 }
 
 func TestNoteEntryAliases(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "inline.md"),
-		"---\naliases: [k8s, kube]\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "block.md"),
-		"---\naliases:\n  - one\n  - two\n---\n")
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{
+		CreatedAt: day(2026, 1, 1),
+		Aliases:   []string{"k8s", "kube"},
+	}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{
+		CreatedAt: day(2026, 1, 2),
+		Aliases:   []string{"one", "two"},
+	}})
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	inline, _ := idx.NoteEntryByRel("inline.md")
-	if len(inline.Aliases) != 2 || inline.Aliases[0] != "k8s" || inline.Aliases[1] != "kube" {
-		t.Errorf("inline Aliases = %v", inline.Aliases)
+	e1, _ := idx.NoteEntryByRel("2026/01/20260101_1.md")
+	if len(e1.Aliases) != 2 || e1.Aliases[0] != "k8s" || e1.Aliases[1] != "kube" {
+		t.Errorf("Aliases = %v", e1.Aliases)
 	}
-	block, _ := idx.NoteEntryByRel("block.md")
-	if len(block.Aliases) != 2 || block.Aliases[0] != "one" || block.Aliases[1] != "two" {
-		t.Errorf("block Aliases = %v", block.Aliases)
+	e2, _ := idx.NoteEntryByRel("2026/01/20260102_2.md")
+	if len(e2.Aliases) != 2 || e2.Aliases[0] != "one" || e2.Aliases[1] != "two" {
+		t.Errorf("Aliases = %v", e2.Aliases)
 	}
 }
 
-func TestNoteEntrySlugFromFrontmatter(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "a.md"),
-		"---\nslug: My Awesome_Note\n---\n")
+func TestNoteEntrySlug(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 3, 31), Slug: "weekly-digest"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 3, 31)}})
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	a, _ := idx.NoteEntryByRel("a.md")
-	if a.Slug != "my-awesome-note" {
-		t.Errorf("Slug = %q, want my-awesome-note", a.Slug)
+	e1, _ := idx.NoteEntryByRel("2026/03/20260331_1_weekly-digest.md")
+	if e1.Slug != "weekly-digest" {
+		t.Errorf("Slug = %q, want weekly-digest", e1.Slug)
+	}
+	e2, _ := idx.NoteEntryByRel("2026/03/20260331_2.md")
+	if e2.Slug != "" {
+		t.Errorf("Slug = %q, want empty", e2.Slug)
 	}
 }
 
-func TestNoteEntrySlugDerivedFromStem(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "20260331_9201_weekly_digest.md"), "# Body\n")
-	mustWriteFile(t, filepath.Join(dir, "20260331_9202.md"), "# Body\n")
-	mustWriteFile(t, filepath.Join(dir, "README.md"), "# Readme\n")
-
-	idx := New(dir, nil)
+func TestNoteEntryDate(t *testing.T) {
+	createdAt := day(2026, 3, 31)
+	s := singleEntryStore(9201, createdAt, "", "", nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	weekly, _ := idx.NoteEntryByRel("20260331_9201_weekly_digest.md")
-	if weekly.Slug != "weekly-digest" {
-		t.Errorf("Slug = %q, want weekly-digest", weekly.Slug)
-	}
-	// Bare UID filename → empty slug.
-	bare, _ := idx.NoteEntryByRel("20260331_9202.md")
-	if bare.Slug != "" {
-		t.Errorf("Slug = %q, want empty", bare.Slug)
-	}
-	// Non-UID filename → normalized stem.
-	readme, _ := idx.NoteEntryByRel("README.md")
-	if readme.Slug != "readme" {
-		t.Errorf("Slug = %q, want readme", readme.Slug)
+	e, _ := idx.NoteEntryByRel("2026/03/20260331_9201.md")
+	if !e.Date.Equal(createdAt) {
+		t.Errorf("Date = %v, want %v", e.Date, createdAt)
 	}
 }
 
-func TestNoteEntryDateFromUID(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "20260331_9201.md"), "---\n---\n")
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	e, _ := idx.NoteEntryByRel("20260331_9201.md")
-	if e.DateSource != "uid" {
-		t.Errorf("DateSource = %q, want uid", e.DateSource)
-	}
-	if e.Date.Year() != 2026 || e.Date.Month() != 3 || e.Date.Day() != 31 {
-		t.Errorf("Date = %v, want 2026-03-31", e.Date)
-	}
-}
-
-func TestNoteEntryDateFromFrontmatterWhenNoUID(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "README.md"), "---\ndate: 2020-01-02\n---\n")
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	e, _ := idx.NoteEntryByRel("README.md")
-	if e.DateSource != "frontmatter" {
-		t.Errorf("DateSource = %q, want frontmatter", e.DateSource)
-	}
-	if e.Date.Year() != 2020 || e.Date.Month() != 1 || e.Date.Day() != 2 {
-		t.Errorf("Date = %v, want 2020-01-02", e.Date)
-	}
-}
-
-func TestNoteEntryDateFromMtimeWhenNoUIDAndNoFrontmatterDate(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "plain.md")
-	mustWriteFile(t, path, "body only, no frontmatter\n")
-
-	// Stamp mtime to a known instant.
-	want := time.Date(2019, 7, 4, 12, 34, 56, 0, time.UTC)
-	if err := os.Chtimes(path, want, want); err != nil {
-		t.Fatalf("chtimes: %v", err)
-	}
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	e, _ := idx.NoteEntryByRel("plain.md")
-	if e.DateSource != "mtime" {
-		t.Errorf("DateSource = %q, want mtime", e.DateSource)
-	}
-	if !e.Date.Equal(want) {
-		t.Errorf("Date = %v, want %v", e.Date, want)
-	}
-}
-
-func TestNoteEntryDateUIDInvalidFallsThrough(t *testing.T) {
-	// UID digits match the pattern but yield an invalid date: month=99.
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "20269931_0001.md"),
-		"---\ndate: 2021-06-06\n---\n")
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	e, _ := idx.NoteEntryByRel("20269931_0001.md")
-	if e.DateSource != "frontmatter" {
-		t.Errorf("DateSource = %q, want frontmatter (UID date invalid)", e.DateSource)
-	}
-}
-
-func TestMalformedFrontmatterDoesNotFailBuild(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, "bad.md"),
-		"---\ntags: [unterminated\n---\n")
-	mustWriteFile(t, filepath.Join(dir, "20260331_9201.md"),
-		"---\ntags: [golang]\n---\n")
-
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
-
-	idx := New(dir, logger)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build returned error, want nil: %v", err)
-	}
-	if _, ok := idx.NoteByUID("20260331_9201"); !ok {
-		t.Error("sibling UID entry should still be indexed")
-	}
-	// The malformed file is still recorded as an entry (no UID, no tags).
-	e, _ := idx.NoteEntryByRel("bad.md")
-	if len(e.Tags) != 0 {
-		t.Errorf("bad.md tags = %v, want none", e.Tags)
-	}
-	if !strings.Contains(buf.String(), "frontmatter parse failed") {
-		t.Errorf("expected parse-failed warning in log, got: %s", buf.String())
-	}
-}
-
-func TestUnreadableFileStillIndexedByUID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("file-mode-based test not reliable on Windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("permission-based test not reliable when running as root")
-	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "20260331_9201.md")
-	mustWriteFile(t, path, "---\ntags: [go]\n---\n")
-	if err := os.Chmod(path, 0o000); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
-
-	idx := New(dir, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	// UID still comes from the filename; content was unreadable.
-	if _, ok := idx.NoteByUID("20260331_9201"); !ok {
-		t.Error("UID should still be indexed even when file contents unreadable")
-	}
-	// Tags should be absent (we couldn't read the frontmatter).
-	if got := idx.NotesByTag("go"); len(got) != 0 {
-		t.Errorf("NotesByTag(go) = %v, want empty (file unreadable)", got)
-	}
-}
+// --- IsUID ---
 
 func TestIsUID(t *testing.T) {
 	tests := []struct {
 		s    string
 		want bool
 	}{
-		// Classic 4-digit year
 		{"20260331_9201", true},
 		{"20261231_0001", true},
-		// Variable-width year (5+ digits before "_")
-		{"12026_0001", true}, // 1-digit year ("1"), month 20, day 26 — still valid as UID pattern
-		{"12345_0001", true}, // 1-digit year, month 23, day 45 — UID pattern only, date validity checked elsewhere
-		// Too few digits before "_"
-		{"2026_0001", false}, // only 4 digits
+		{"12026_0001", true},
+		{"12345_0001", true},
+		{"2026_0001", false},
 		{"1234_0001", false},
-		// Missing or malformed suffix
 		{"20260331_", false},
 		{"20260331_abc", false},
-		// Not a UID shape at all
 		{"hello_world", false},
 		{"202603319201", false},
 	}
@@ -672,71 +428,56 @@ func TestIsUID(t *testing.T) {
 	}
 }
 
-// TestRebuildDoneReflectsLatestState pins that reading the channel
-// returned from Rebuild guarantees a Build has completed against the
-// tree state at or after the Rebuild call. Without this guarantee the
-// SSE broadcast at sse.go could fire before the index catches up,
-// causing handleView to read stale metadata.
+// --- Rebuild ---
+
 func TestRebuildDoneReflectsLatestState(t *testing.T) {
-	dir := t.TempDir()
-	idx := New(dir, nil)
+	s := note.NewMemStore()
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("initial Build: %v", err)
 	}
 
-	mustWriteFile(t, filepath.Join(dir, "fresh.md"),
-		"---\ntitle: Fresh\n---\n")
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Title: "Fresh"}})
 
-	if _, ok := idx.NoteEntryByRel("fresh.md"); ok {
-		t.Fatal("fresh.md should not be indexed before Rebuild")
+	if _, ok := idx.NoteEntryByRel("2026/01/20260101_1.md"); ok {
+		t.Fatal("entry should not be indexed before Rebuild")
 	}
 
 	<-idx.Rebuild()
 
-	entry, ok := idx.NoteEntryByRel("fresh.md")
+	entry, ok := idx.NoteEntryByRel("2026/01/20260101_1.md")
 	if !ok {
-		t.Fatal("fresh.md should be indexed after Rebuild done fires")
+		t.Fatal("entry should be indexed after Rebuild done fires")
 	}
 	if entry.Title != "Fresh" {
 		t.Errorf("Title = %q, want Fresh", entry.Title)
 	}
 }
 
-// TestRebuildCoalescesRequestsDuringInflight pins the scheduling rule:
-// while a build is in-flight, all new Rebuild callers share a single
-// queued follow-up. Verified by observing that the request arriving
-// after a write is reflected by the time the returned channel closes.
 func TestRebuildCoalescesRequestsDuringInflight(t *testing.T) {
-	dir := t.TempDir()
-	// Prime the tree with enough files that Build takes measurable time.
-	for i := 0; i < 200; i++ {
-		mustWriteFile(t, filepath.Join(dir, "n"+strconv.Itoa(i)+".md"),
-			"---\ntitle: T\n---\n")
+	s := note.NewMemStore()
+	// Prime the store with enough entries that Build takes measurable time.
+	for i := 1; i <= 200; i++ {
+		putEntry(s, note.Entry{ID: i, Meta: note.Meta{CreatedAt: day(2026, 1, i%28+1), Title: "T"}})
 	}
 
-	idx := New(dir, nil)
+	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("initial Build: %v", err)
 	}
 
-	// Kick off a build, then — without waiting — add a new file and
-	// request another rebuild. The second call must return a channel
-	// that reflects the new file, not the prior in-flight build.
 	first := idx.Rebuild()
 
-	mustWriteFile(t, filepath.Join(dir, "late.md"),
-		"---\ntitle: Late\n---\n")
+	// Add a new entry while the first rebuild is in flight.
+	lateID := 9999
+	putEntry(s, note.Entry{ID: lateID, Meta: note.Meta{CreatedAt: day(2026, 6, 15), Title: "Late"}})
 
 	second := idx.Rebuild()
 
-	// Second must not close before first (queue ordering).
 	select {
 	case <-second:
-		// If this ever fires before first, the queued build was elided.
 		select {
 		case <-first:
-			// Both closed at roughly the same time — acceptable if
-			// first finished between the two reads.
 		default:
 			t.Fatal("second done closed before in-flight build finished")
 		}
@@ -745,8 +486,24 @@ func TestRebuildCoalescesRequestsDuringInflight(t *testing.T) {
 
 	<-second
 
-	if _, ok := idx.NoteEntryByRel("late.md"); !ok {
-		t.Error("late.md must be indexed once second Rebuild's done fires")
+	lateRel := "2026/06/20260615_" + strconv.Itoa(lateID) + ".md"
+	if _, ok := idx.NoteEntryByRel(lateRel); !ok {
+		t.Errorf("late entry %s must be indexed once second Rebuild's done fires", lateRel)
 	}
 }
 
+// --- helpers used by permission-based tests ---
+
+func mustMkdirAll(t *testing.T, p string) {
+	t.Helper()
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", p, err)
+	}
+}
+
+func mustWriteFile(t *testing.T, p, content string) {
+	t.Helper()
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", p, err)
+	}
+}

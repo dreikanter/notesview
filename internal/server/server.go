@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dreikanter/notesctl/note"
+
 	"github.com/dreikanter/nview/internal/index"
 	"github.com/dreikanter/nview/internal/logging"
 	"github.com/dreikanter/nview/internal/renderer"
@@ -31,7 +33,8 @@ func NewServer(root, editor string, logger *slog.Logger) (*Server, error) {
 	if logger == nil {
 		logger = logging.Discard()
 	}
-	idx := index.New(root, logger)
+	store := note.NewOSStore(root)
+	idx := index.New(store, logger)
 	if err := idx.Build(); err != nil {
 		return nil, fmt.Errorf("initial index build: %w", err)
 	}

@@ -1,12 +1,8 @@
 package index
 
 import (
-	"errors"
-	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -14,10 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dreikanter/notesctl/note"
+
 	"github.com/dreikanter/nview/internal/logging"
 )
-
-var uidPattern = regexp.MustCompile(`^(\d{5,}_\d+)`)
 
 var fullUIDPattern = regexp.MustCompile(`^\d{5,}_\d+$`)
 
@@ -27,38 +23,33 @@ func IsUID(s string) bool {
 	return fullUIDPattern.MatchString(s)
 }
 
-// NoteEntry is the per-file record built during a single walk. Fields not
-// needed for today's lookups are populated for future derived maps
-// (bySlug, byAlias, byDate) without requiring a second walk.
+// NoteEntry is the per-note record held in the index. It is a thin
+// projection of note.Entry.Meta; filesystem paths are notesctl-internal.
 type NoteEntry struct {
-	// Identity.
-	RelPath string
-	UID     string
-	Stem    string
-
-	// Frontmatter-derived.
 	Slug        string
 	Title       string
 	Type        string
 	Description string
 	Tags        []string
 	Aliases     []string
-
-	// Temporal.
-	Date       time.Time
-	DateSource string
+	Date        time.Time
 }
 
 // NoteIndex is the unified in-memory index of the notes tree. It is safe
-// for concurrent use. Build performs a single filepath.WalkDir, parses
-// frontmatter once per file, and swaps all state in atomically.
+// for concurrent use. Build calls store.All(), projects each entry into a
+// NoteEntry, and swaps all state in atomically.
 type NoteIndex struct {
-	root    string
-	logger  *slog.Logger
+	store  note.Store
+	logger *slog.Logger
+
 	mu      sync.RWMutex
-	byUID   map[string]string
-	byRel   map[string]NoteEntry
-	byTag   map[string][]string
+	byID    map[int]string      // numeric ID → forward-slash rel-path
+	byRel   map[string]NoteEntry // rel-path → entry
+	byTag   map[string][]string // tag → rel-path slice
+	bySlug  map[string][]string // slug → rel-path slice (multi-valued)
+	byAlias map[string]string   // alias → rel-path
+	byType  map[string][]string // type → rel-path slice
+	byDate  map[string][]string // YYYYMMDD → rel-path slice
 	allTags []string
 
 	// buildMu guards curDone and queuedDone — the rebuild state machine.
@@ -69,94 +60,67 @@ type NoteIndex struct {
 	queuedDone chan struct{} // follow-up build queued while curDone runs; nil when none
 }
 
-// New creates a NoteIndex rooted at root. A nil logger is replaced with
+// New creates a NoteIndex backed by store. A nil logger is replaced with
 // a discard logger.
-func New(root string, logger *slog.Logger) *NoteIndex {
+func New(store note.Store, logger *slog.Logger) *NoteIndex {
 	if logger == nil {
 		logger = logging.Discard()
 	}
 	return &NoteIndex{
-		root:   root,
-		logger: logger,
-		byUID:  make(map[string]string),
-		byRel:  make(map[string]NoteEntry),
-		byTag:  make(map[string][]string),
+		store:   store,
+		logger:  logger,
+		byID:    make(map[int]string),
+		byRel:   make(map[string]NoteEntry),
+		byTag:   make(map[string][]string),
+		bySlug:  make(map[string][]string),
+		byAlias: make(map[string]string),
+		byType:  make(map[string][]string),
+		byDate:  make(map[string][]string),
 	}
 }
 
-// Build walks the notes tree once, reads each .md file, and rebuilds all
-// state. The swap at the end is atomic. Non-permission walk errors are
-// propagated; permission-denied directories are warned and skipped.
+// Build fetches all entries from the store and rebuilds the index atomically.
 func (i *NoteIndex) Build() error {
-	byUID := make(map[string]string)
-	byRel := make(map[string]NoteEntry)
-	byTag := make(map[string][]string)
-
-	err := filepath.WalkDir(i.root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				i.logger.Warn("skipping path: permission denied", "path", path)
-				return filepath.SkipDir
-			}
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".md") {
-			return nil
-		}
-
-		rel, err := filepath.Rel(i.root, path)
-		if err != nil {
-			return fmt.Errorf("filepath.Rel %s -> %s: %w", i.root, path, err)
-		}
-		rel = filepath.ToSlash(rel)
-
-		stem := strings.TrimSuffix(d.Name(), ".md")
-		uid := ""
-		if m := uidPattern.FindStringSubmatch(d.Name()); m != nil {
-			uid = m[1]
-		}
-
-		fm, fmErr := parseFrontmatter(path)
-		if fmErr != nil {
-			i.logger.Warn("frontmatter parse failed", "path", rel, "err", fmErr)
-			fm = frontmatter{}
-		}
-
-		tags := dedupStrings(fm.Tags)
-
-		var info os.FileInfo
-		if fi, ierr := d.Info(); ierr == nil {
-			info = fi
-		}
-		date, source := resolveDate(uid, fm.Date, info)
-
-		byRel[rel] = NoteEntry{
-			RelPath:     rel,
-			UID:         uid,
-			Stem:        stem,
-			Slug:        deriveSlug(stem, uid, fm.Slug),
-			Title:       fm.Title,
-			Type:        fm.Type,
-			Description: fm.Description,
-			Tags:        tags,
-			Aliases:     fm.Aliases,
-			Date:        date,
-			DateSource:  source,
-		}
-
-		if uid != "" {
-			byUID[uid] = rel
-		}
-		for _, t := range tags {
-			byTag[t] = append(byTag[t], rel)
-		}
-		return nil
-	})
+	entries, err := i.store.All()
 	if err != nil {
 		return err
+	}
+
+	byID := make(map[int]string)
+	byRel := make(map[string]NoteEntry)
+	byTag := make(map[string][]string)
+	bySlug := make(map[string][]string)
+	byAlias := make(map[string]string)
+	byType := make(map[string][]string)
+	byDate := make(map[string][]string)
+
+	for _, e := range entries {
+		rel := entryRelPath(e)
+		ne := NoteEntry{
+			Slug:        e.Meta.Slug,
+			Title:       e.Meta.Title,
+			Type:        e.Meta.Type,
+			Description: e.Meta.Description,
+			Tags:        dedupStrings(e.Meta.Tags),
+			Aliases:     append([]string(nil), e.Meta.Aliases...),
+			Date:        e.Meta.CreatedAt,
+		}
+		byID[e.ID] = rel
+		byRel[rel] = ne
+		for _, tag := range ne.Tags {
+			byTag[tag] = append(byTag[tag], rel)
+		}
+		if ne.Slug != "" {
+			bySlug[ne.Slug] = append(bySlug[ne.Slug], rel)
+		}
+		for _, alias := range ne.Aliases {
+			byAlias[alias] = rel
+		}
+		if ne.Type != "" {
+			byType[ne.Type] = append(byType[ne.Type], rel)
+		}
+		dateKey := e.Meta.CreatedAt.Format(note.DateFormat)
+		byDate[dateKey] = append(byDate[dateKey], rel)
 	}
 
 	allTags := make([]string, 0, len(byTag))
@@ -169,12 +133,26 @@ func (i *NoteIndex) Build() error {
 	}
 
 	i.mu.Lock()
-	i.byUID = byUID
+	i.byID = byID
 	i.byRel = byRel
 	i.byTag = byTag
+	i.bySlug = bySlug
+	i.byAlias = byAlias
+	i.byType = byType
+	i.byDate = byDate
 	i.allTags = allTags
 	i.mu.Unlock()
 	return nil
+}
+
+// entryRelPath reconstructs the forward-slash relative path for e using the
+// same YYYY/MM/YYYYMMDD_ID[_slug][.type].md layout that notesctl writes.
+func entryRelPath(e note.Entry) string {
+	date := e.Meta.CreatedAt.Format(note.DateFormat)
+	filename := note.Filename(date, e.ID, e.Meta.Slug, e.Meta.Type)
+	year := date[:len(date)-4]
+	month := date[len(date)-4 : len(date)-2]
+	return path.Join(year, month, filename)
 }
 
 // Rebuild requests an index rebuild and returns a channel that closes
@@ -236,19 +214,27 @@ func (i *NoteIndex) runBuild(done chan struct{}) {
 	}
 }
 
-// NoteByUID returns the forward-slash rel-path for a UID and a boolean
-// found flag. UIDs are unique.
+// NoteByUID returns the forward-slash rel-path for a UID (e.g.
+// "20260331_9201") and a found flag. The numeric ID after the last "_"
+// is used as the lookup key into byID.
 func (i *NoteIndex) NoteByUID(uid string) (string, bool) {
+	idx := strings.LastIndex(uid, "_")
+	if idx < 0 {
+		return "", false
+	}
+	id, err := strconv.Atoi(uid[idx+1:])
+	if err != nil || id <= 0 {
+		return "", false
+	}
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	p, ok := i.byUID[uid]
-	return p, ok
+	relPath, ok := i.byID[id]
+	return relPath, ok
 }
 
-// NoteEntryByRel returns the NoteEntry whose RelPath equals rel (expected
-// in forward-slash form) and a found flag. Slice fields (Tags, Aliases)
-// are defensively copied so callers cannot mutate the index's internal
-// storage — matching the convention used by Tags and NotesByTag.
+// NoteEntryByRel returns the NoteEntry whose rel-path equals rel (in
+// forward-slash form) and a found flag. Slice fields (Tags, Aliases)
+// are defensively copied so callers cannot mutate the index's storage.
 func (i *NoteIndex) NoteEntryByRel(rel string) (NoteEntry, bool) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
@@ -276,104 +262,8 @@ func (i *NoteIndex) NotesByTag(tag string) []string {
 	return cloneStrings(i.byTag[tag])
 }
 
-// deriveSlug returns the normalized slug for an entry. If the frontmatter
-// supplies one, normalize it. Otherwise derive from the stem: strip the
-// UID + trailing "_" prefix if present, then normalize. An empty residue
-// yields an empty slug. Normalization: lowercase; runs of characters that
-// are neither letters nor digits become a single "-"; trim leading and
-// trailing "-".
-func deriveSlug(stem, uid, frontmatterSlug string) string {
-	raw := frontmatterSlug
-	if raw == "" {
-		residue := stem
-		if uid != "" && strings.HasPrefix(residue, uid) {
-			residue = strings.TrimPrefix(residue, uid)
-			residue = strings.TrimPrefix(residue, "_")
-		}
-		raw = residue
-	}
-	if raw == "" {
-		return ""
-	}
-	return normalizeSlug(raw)
-}
-
-func normalizeSlug(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	lastDash := false
-	for _, r := range s {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
-			b.WriteRune(r)
-			lastDash = false
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r + ('a' - 'A'))
-			lastDash = false
-		default:
-			if !lastDash && b.Len() > 0 {
-				b.WriteByte('-')
-				lastDash = true
-			}
-		}
-	}
-	out := b.String()
-	return strings.TrimRight(out, "-")
-}
-
-// resolveDate returns (Date, DateSource) per the spec priority: UID date,
-// then frontmatter date, then file mtime. stat may be nil in tests; if
-// all branches fail, returns a zero Date and empty DateSource.
-func resolveDate(uid string, fmDate time.Time, info os.FileInfo) (time.Time, string) {
-	if d, ok := uidDate(uid); ok {
-		return d, "uid"
-	}
-	if !fmDate.IsZero() {
-		return fmDate, "frontmatter"
-	}
-	if info != nil {
-		return info.ModTime(), "mtime"
-	}
-	return time.Time{}, ""
-}
-
-// uidDate parses the UID's leading digit run as [Y…][MM][DD]. Returns
-// (time.Time{}, false) if the digit run is shorter than 5 or the
-// resulting date is not real (e.g., month 13, Feb 30).
-func uidDate(uid string) (time.Time, bool) {
-	if uid == "" {
-		return time.Time{}, false
-	}
-	underscore := strings.IndexByte(uid, '_')
-	if underscore < 5 {
-		return time.Time{}, false
-	}
-	head := uid[:underscore]
-	yearLen := len(head) - 4
-	y, err := strconv.Atoi(head[:yearLen])
-	if err != nil {
-		return time.Time{}, false
-	}
-	m, err := strconv.Atoi(head[yearLen : yearLen+2])
-	if err != nil {
-		return time.Time{}, false
-	}
-	d, err := strconv.Atoi(head[yearLen+2:])
-	if err != nil {
-		return time.Time{}, false
-	}
-	// Reject out-of-range dates. time.Date normalizes silently, so we
-	// build then verify the fields round-trip.
-	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
-	if t.Year() != y || int(t.Month()) != m || t.Day() != d {
-		return time.Time{}, false
-	}
-	return t, true
-}
-
 // cloneStrings returns a fresh copy of s. A nil input yields a non-nil,
-// zero-length slice so callers always get a usable value — matching the
-// "unknown returns empty slice" contract in NotesByTag.
+// zero-length slice so callers always get a usable value.
 func cloneStrings(s []string) []string {
 	out := make([]string, len(s))
 	copy(out, s)

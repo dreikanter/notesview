@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dreikanter/notesctl/note"
+
 	"github.com/dreikanter/nview/internal/index"
 )
 
@@ -69,7 +71,7 @@ func setupTestIndex(t *testing.T) *index.NoteIndex {
 	if err := os.WriteFile(filepath.Join(dir, "2026", "03", "20260330_9198.md"), []byte("# Note"), 0o644); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
-	idx := index.New(dir, nil)
+	idx := index.New(note.NewOSStore(dir), nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("build: %v", err)
 	}
