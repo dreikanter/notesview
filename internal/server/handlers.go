@@ -230,7 +230,7 @@ func notesCard(notes []index.NoteEntry, empty string) *IndexCard {
 	for i, noteEntry := range notes {
 		name := noteEntry.Title
 		if name == "" {
-			name = noteEntry.RelPath
+			name = fmt.Sprintf("#%d", noteEntry.ID)
 		}
 		date := ""
 		if !noteEntry.Date.IsZero() {
