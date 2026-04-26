@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Replace fsnotify-based watcher loop with notesctl's `Store.Watch`, switch the index to incremental `Apply` updates, and gate SSE delivery on a per-view scope (`scope=note&id=X` for single-note views, `scope=list` for index pages). Adds `POST /api/index/refresh` plus a topbar refresh button and visibilitychange-driven reconcile so missed events are recovered on tab focus. ([#110])
+
+[#110]: https://github.com/dreikanter/nview/issues/110
+
 ## [0.2.0] - 2026-04-26
 
 ### Changed

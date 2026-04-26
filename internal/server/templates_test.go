@@ -90,7 +90,6 @@ func TestRenderView(t *testing.T) {
 			Description: "A test note",
 		},
 		HTML:     template.HTML("<p>Hello world</p>"),
-		SSEWatch: "/events?watch=notes%2Ftest.md",
 		ViewHref: "/view/notes/test.md",
 		Sidebar: SidebarData{
 			Tags: &IndexCard{
@@ -165,7 +164,6 @@ func TestRenderNotePartial(t *testing.T) {
 			Tags:  []string{"journal"},
 		},
 		HTML:     template.HTML("<p>Partial content</p>"),
-		SSEWatch: "/events?watch=2026%2F03%2Fnote.md",
 		ViewHref: "/view/2026/03/note.md",
 		EditPath: "2026/03/note.md",
 		EditHref: "/edit/2026/03/note.md",

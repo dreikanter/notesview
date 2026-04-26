@@ -44,13 +44,6 @@ func editHref(noteID int) string {
 	return fmt.Sprintf("/api/edit/%d", noteID)
 }
 
-// viewSSEWatch is the value for the sse-connect attribute on note_pane_body.
-// The SSE URL needs the note path percent-encoded because file names may
-// contain spaces, slashes, question marks, etc.
-func viewSSEWatch(filePath string) string {
-	return "/events?watch=" + url.QueryEscape(filePath)
-}
-
 // hxTargetedAt returns true if this is an HTMX request whose target is
 // the named element id (without the leading "#"). HTMX sends
 // HX-Target as the raw id value.
@@ -75,7 +68,6 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.index.Rebuild()
 	view := ViewData{
 		layoutFields: layoutFields{Title: ""},
 		NotePath:     "",
@@ -155,7 +147,6 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 			NoteTitle: noteTitle,
 			Note:      noteEntry,
 			HTML:      template.HTML(html),
-			SSEWatch:  viewSSEWatch(relPath),
 			ViewHref:  viewHref,
 			EditPath:  editPath,
 			EditHref:  eHref,
@@ -173,7 +164,6 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		NoteTitle:    noteTitle,
 		Note:         noteEntry,
 		HTML:         template.HTML(html),
-		SSEWatch:     viewSSEWatch(relPath),
 		ViewHref:     viewHref,
 		Sidebar:      s.buildSidebar(relPath),
 	}
@@ -240,7 +230,7 @@ func notesCard(notes []index.NoteEntry, empty string) *IndexCard {
 	for i, noteEntry := range notes {
 		name := noteEntry.Title
 		if name == "" {
-			name = noteEntry.RelPath
+			name = fmt.Sprintf("#%d", noteEntry.ID)
 		}
 		date := ""
 		if !noteEntry.Date.IsZero() {
@@ -305,6 +295,26 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if _, err := w.Write(data); err != nil {
 		s.logger.Warn("write response failed", "id", id, "err", err)
+	}
+}
+
+// handleRefresh runs a Reconcile against the store and applies the diff to
+// the index. The browser hits this on visibilitychange or via a manual
+// refresh button to recover from missed events (sleep, lost SSE, etc.).
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	diff, err := s.index.Reconcile()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]int{
+		"added":   len(diff.Added),
+		"updated": len(diff.Updated),
+		"deleted": len(diff.Removed),
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		s.logger.Warn("write response failed", "err", err)
 	}
 }
 

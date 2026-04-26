@@ -64,7 +64,6 @@ type ViewData struct {
 	NoteTitle  string
 	Note       *index.NoteEntry
 	HTML       template.HTML
-	SSEWatch   string
 	ViewHref   string
 	Sidebar    SidebarData
 	DirListing *DirListingData // non-nil when main panel shows a directory listing
@@ -78,7 +77,6 @@ type NotePartialData struct {
 	NoteTitle string
 	Note      *index.NoteEntry
 	HTML      template.HTML
-	SSEWatch  string
 	ViewHref  string
 	EditPath  string
 	EditHref  string

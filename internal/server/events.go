@@ -1,225 +1,197 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/dreikanter/notesctl/note"
+
 	"github.com/dreikanter/nview/internal/index"
 	"github.com/dreikanter/nview/internal/logging"
-	"github.com/fsnotify/fsnotify"
 )
 
-// eventMsg is the internal envelope passed to subscribers.
-// kind is "change" (file content) or "dir-changed" (tree mutation).
+// scope describes which events a Subscription wants to receive.
+type scope int
+
+const (
+	scopeNote scope = iota + 1 // single-note view: only events with matching ID
+	scopeList                  // list view: debounced "index changed" tick
+)
+
+// listDebounce is the maximum rate at which list-scope clients receive
+// "index changed" ticks. Coalesces bursts during multi-file operations
+// (e.g. a sync) so the browser doesn't redraw the sidebar per file.
+const listDebounce = 1 * time.Second
+
 type eventMsg struct {
-	kind string
-	path string
+	scope scope
+	id    int // populated for scopeNote
+}
+
+// watchableStore is the subset of *note.OSStore the EventHub needs:
+// the standard Store interface plus Watch.
+type watchableStore interface {
+	note.Store
+	Watch(ctx context.Context, opts ...note.WatchOpt) (note.Watcher, error)
 }
 
 type EventHub struct {
-	root     string
-	logger   *slog.Logger
-	index    *index.NoteIndex
-	mu       sync.RWMutex
-	clients  map[*Subscription]struct{}
-	watcher  *fsnotify.Watcher
-	done     chan struct{}
-	timerMu  sync.Mutex
+	logger *slog.Logger
+	index  *index.NoteIndex
+	store  watchableStore
+
+	ctx     context.Context
+	cancel  context.CancelFunc
+	watcher note.Watcher
+
+	mu      sync.RWMutex
+	clients map[*Subscription]struct{}
+
+	timerMu   sync.Mutex
+	listTimer *time.Timer
+
 	stopOnce sync.Once
+	done     chan struct{}
 }
 
 type Subscription struct {
-	watchPath string // "" means no file-change subscription
-	events    chan eventMsg
+	scope  scope
+	id     int
+	events chan eventMsg
 }
 
-func NewEventHub(root string, logger *slog.Logger, idx *index.NoteIndex) *EventHub {
+// NewEventHub builds a hub backed by store. The hub forwards watcher events
+// to subscribed SSE clients filtered by scope, and applies each event to
+// the index before forwarding so re-fetches always see fresh state.
+func NewEventHub(store watchableStore, logger *slog.Logger, idx *index.NoteIndex) *EventHub {
 	if logger == nil {
 		logger = logging.Discard()
 	}
 	return &EventHub{
-		root:    root,
 		logger:  logger,
 		index:   idx,
+		store:   store,
 		clients: make(map[*Subscription]struct{}),
 		done:    make(chan struct{}),
 	}
 }
 
+// Start opens the store's watcher and begins consuming events.
 func (h *EventHub) Start() error {
-	watcher, err := fsnotify.NewWatcher()
+	ctx, cancel := context.WithCancel(context.Background())
+	h.ctx = ctx
+	h.cancel = cancel
+	w, err := h.store.Watch(ctx)
 	if err != nil {
+		cancel()
 		return err
 	}
-	h.watcher = watcher
-	if err := h.watchRecursive(h.root); err != nil {
-		h.logger.Warn("initial recursive watch failed", "err", err)
-	}
+	h.watcher = w
 	go h.eventLoop()
 	return nil
-}
-
-func (h *EventHub) watchRecursive(absDir string) error {
-	return filepath.WalkDir(absDir, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if name := d.Name(); strings.HasPrefix(name, ".") && p != absDir {
-				return filepath.SkipDir
-			}
-			if err := h.watcher.Add(p); err != nil {
-				h.logger.Warn("watcher add failed", "dir", p, "err", err)
-			}
-		}
-		return nil
-	})
 }
 
 func (h *EventHub) Stop() {
 	h.stopOnce.Do(func() {
 		close(h.done)
+		if h.cancel != nil {
+			h.cancel()
+		}
 		if h.watcher != nil {
 			if err := h.watcher.Close(); err != nil {
-				h.logger.Warn("file watcher close failed", "err", err)
+				h.logger.Warn("watcher close failed", "err", err)
 			}
 		}
+		h.timerMu.Lock()
+		if h.listTimer != nil {
+			h.listTimer.Stop()
+			h.listTimer = nil
+		}
+		h.timerMu.Unlock()
 	})
 }
 
 func (h *EventHub) eventLoop() {
-	changeTimers := make(map[string]*time.Timer)
-	dirTimers := make(map[string]*time.Timer)
-
 	for {
 		select {
 		case <-h.done:
-			h.timerMu.Lock()
-			for _, t := range changeTimers {
-				t.Stop()
-			}
-			for _, t := range dirTimers {
-				t.Stop()
-			}
-			h.timerMu.Unlock()
 			return
-		case event, ok := <-h.watcher.Events:
+		case ev, ok := <-h.watcher.Events():
 			if !ok {
 				return
 			}
-			h.handleFSEvent(event, changeTimers, dirTimers)
-		case err, ok := <-h.watcher.Errors:
-			if !ok {
-				return
-			}
-			h.logger.Warn("file watcher error", "err", err)
-		}
-	}
-}
-
-func (h *EventHub) handleFSEvent(event fsnotify.Event, changeTimers, dirTimers map[string]*time.Timer) {
-	// A new subdir means we must watch it too.
-	if event.Op&fsnotify.Create != 0 {
-		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-			if name := filepath.Base(event.Name); !strings.HasPrefix(name, ".") {
-				if err := h.watchRecursive(event.Name); err != nil {
-					h.logger.Warn("watcher add (new dir tree) failed", "dir", event.Name, "err", err)
-				}
-			}
-		}
-	}
-
-	// File-content change: Write/Create on a .md file → 'change' broadcast.
-	if event.Op&(fsnotify.Write|fsnotify.Create) != 0 &&
-		strings.HasSuffix(strings.ToLower(event.Name), ".md") {
-		p := event.Name
-		h.timerMu.Lock()
-		if t, ok := changeTimers[p]; ok {
-			t.Stop()
-		}
-		changeTimers[p] = time.AfterFunc(100*time.Millisecond, func() {
-			h.timerMu.Lock()
-			delete(changeTimers, p)
-			h.timerMu.Unlock()
+			// Apply to the index BEFORE forwarding to clients so an SSE
+			// client refetching against the index never sees stale state.
 			if h.index != nil {
-				<-h.index.Rebuild()
+				h.index.Apply(ev)
 			}
-			h.broadcastChange(p)
-		})
-		h.timerMu.Unlock()
-	}
-
-	// Dir mutation: Create/Remove/Rename on a visible entry → 'dir-changed'
-	// broadcast for the parent dir.
-	if event.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
-		base := filepath.Base(event.Name)
-		visible := !strings.HasPrefix(base, ".")
-		if visible {
-			// On Remove/Rename the path is gone — can't Stat. Treat it as
-			// potentially visible; if the name was a non-.md file it'll be
-			// dropped by the dir-listing anyway. For Create, check Stat to
-			// filter out non-.md files.
-			if event.Op&fsnotify.Create != 0 {
-				if info, err := os.Stat(event.Name); err == nil && !info.IsDir() {
-					visible = strings.HasSuffix(strings.ToLower(base), ".md")
-				}
-			}
-		}
-		if visible {
-			parentAbs := filepath.Dir(event.Name)
-			parentRel, err := filepath.Rel(h.root, parentAbs)
-			if err == nil {
-				if parentRel == "." {
-					parentRel = ""
-				}
-				pr := parentRel
-				h.timerMu.Lock()
-				if t, ok := dirTimers[pr]; ok {
-					t.Stop()
-				}
-				dirTimers[pr] = time.AfterFunc(200*time.Millisecond, func() {
-					h.timerMu.Lock()
-					delete(dirTimers, pr)
-					h.timerMu.Unlock()
-					h.broadcastDirChanged(pr)
-				})
-				h.timerMu.Unlock()
-			}
+			h.dispatch(ev)
 		}
 	}
 }
 
-func (h *EventHub) broadcastChange(absPath string) {
+// dispatch sends ev to clients whose scope matches: note-scope subscribers
+// receive an event when ev.ID matches; list-scope subscribers receive a
+// debounced tick.
+func (h *EventHub) dispatch(ev note.Event) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	var noteSubs []*Subscription
+	hasListSub := false
 	for sub := range h.clients {
-		if sub.watchPath == "" {
-			continue
+		switch sub.scope {
+		case scopeNote:
+			if sub.id == ev.ID {
+				noteSubs = append(noteSubs, sub)
+			}
+		case scopeList:
+			hasListSub = true
 		}
-		safePath, err := SafePath(h.root, sub.watchPath)
-		if err != nil || safePath != absPath {
-			continue
-		}
+	}
+	h.mu.RUnlock()
+
+	for _, sub := range noteSubs {
 		select {
-		case sub.events <- eventMsg{kind: "change", path: sub.watchPath}:
+		case sub.events <- eventMsg{scope: scopeNote, id: ev.ID}:
 		default:
 		}
 	}
+	if hasListSub {
+		h.scheduleListTick()
+	}
 }
 
-func (h *EventHub) broadcastDirChanged(relPath string) {
+// scheduleListTick coalesces list-scope broadcasts to one per listDebounce
+// window. The timer fires at most once per debounce window regardless of
+// how many events arrive in the meantime.
+func (h *EventHub) scheduleListTick() {
+	h.timerMu.Lock()
+	defer h.timerMu.Unlock()
+	if h.listTimer != nil {
+		return
+	}
+	h.listTimer = time.AfterFunc(listDebounce, func() {
+		h.timerMu.Lock()
+		h.listTimer = nil
+		h.timerMu.Unlock()
+		h.broadcastList()
+	})
+}
+
+func (h *EventHub) broadcastList() {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for sub := range h.clients {
+		if sub.scope != scopeList {
+			continue
+		}
 		select {
-		case sub.events <- eventMsg{kind: "dir-changed", path: relPath}:
+		case sub.events <- eventMsg{scope: scopeList}:
 		default:
 		}
 	}
@@ -237,6 +209,10 @@ func (h *EventHub) removeClient(c *Subscription) {
 	h.mu.Unlock()
 }
 
+// handleEvents serves /events. Required query params:
+//
+//	scope=note&id=<int>  → single-note view, filtered to that ID
+//	scope=list           → list view, debounced index-changed tick
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -244,22 +220,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	watchPath := r.URL.Query().Get("watch")
-	if watchPath != "" {
-		if _, err := SafePath(s.root, watchPath); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	sub, err := parseSubscription(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	sub := &Subscription{
-		watchPath: watchPath,
-		events:    make(chan eventMsg, 8),
-	}
 	s.events.addClient(sub)
 	defer s.events.removeClient(sub)
 
@@ -272,19 +242,31 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case msg := <-sub.events:
-			switch msg.kind {
-			case "change":
-				fmt.Fprintf(w, "event: change\ndata: %s\n\n", toJSON(map[string]string{
-					"type": "change",
-					"path": msg.path,
-				}))
-			case "dir-changed":
-				fmt.Fprintf(w, "event: dir-changed\ndata: %s\n\n", toJSON(map[string]string{
-					"path": msg.path,
-				}))
+			switch msg.scope {
+			case scopeNote:
+				fmt.Fprintf(w, "event: note\ndata: %s\n\n", toJSON(map[string]int{"id": msg.id}))
+			case scopeList:
+				fmt.Fprintf(w, "event: list\ndata: %s\n\n", toJSON(map[string]string{"type": "list"}))
 			}
 			flusher.Flush()
 		}
+	}
+}
+
+func parseSubscription(r *http.Request) (*Subscription, error) {
+	q := r.URL.Query()
+	switch q.Get("scope") {
+	case "note":
+		idStr := q.Get("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("invalid id %q for scope=note", idStr)
+		}
+		return &Subscription{scope: scopeNote, id: id, events: make(chan eventMsg, 8)}, nil
+	case "list":
+		return &Subscription{scope: scopeList, events: make(chan eventMsg, 8)}, nil
+	default:
+		return nil, fmt.Errorf("missing or invalid scope (expected 'note' or 'list')")
 	}
 }
 

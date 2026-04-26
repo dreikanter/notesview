@@ -3,7 +3,7 @@
 {{ define "entry_list_rows" }}
 {{ range .Entries }}
 {{ if .IsTag }}
-<li class="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+<li class="border-b border-gray-200 dark:border-gray-800 last:border-b-0">
   <a
     href="{{ .Href }}"
     title="{{ .Name }}"
@@ -11,40 +11,40 @@
     data-entry-type="tag"
     data-entry-name="{{ .Name }}"
     data-entry-href="{{ .Href }}"
-    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 border border-transparent hover:border-blue-300 dark:hover:border-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
+    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 hover:bg-blue-50 dark:hover:bg-blue-950/40"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
 </li>
 {{ else if .IsType }}
-<li class="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+<li class="border-b border-gray-200 dark:border-gray-800 last:border-b-0">
   <a
     href="{{ .Href }}"
     title="{{ .Name }}"
     data-action="selectIndex"
     data-entry-type="type"
     data-entry-href="{{ .Href }}"
-    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 border border-transparent hover:border-blue-300 dark:hover:border-blue-600"><span class="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-100 dark:bg-gray-800 text-[10px] text-gray-500 dark:text-gray-400">T</span><span class="truncate min-w-0">{{ .Name }}</span></a>
+    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 hover:bg-blue-50 dark:hover:bg-blue-950/40"><span class="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-100 dark:bg-gray-800 text-[10px] text-gray-500 dark:text-gray-400">T</span><span class="truncate min-w-0">{{ .Name }}</span></a>
 </li>
 {{ else if .IsDate }}
-<li class="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+<li class="border-b border-gray-200 dark:border-gray-800 last:border-b-0">
   <a
     href="{{ .Href }}"
     title="{{ .Name }}"
     data-action="selectIndex"
     data-entry-type="date"
     data-entry-href="{{ .Href }}"
-    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 border border-transparent hover:border-blue-300 dark:hover:border-blue-600"><span class="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-100 dark:bg-gray-800 text-[10px] text-gray-500 dark:text-gray-400">D</span><span class="truncate min-w-0">{{ .Name }}</span></a>
+    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 hover:bg-blue-50 dark:hover:bg-blue-950/40"><span class="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-100 dark:bg-gray-800 text-[10px] text-gray-500 dark:text-gray-400">D</span><span class="truncate min-w-0">{{ .Name }}</span></a>
 </li>
 {{ else if .IsDir }}
-<li class="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+<li class="border-b border-gray-200 dark:border-gray-800 last:border-b-0">
   <a
     href="{{ .Href }}"
     title="{{ .Name }}"
     data-action="selectDir"
     data-entry-type="dir"
     data-entry-href="{{ .Href }}"
-    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 font-medium no-underline transition-colors duration-100 border border-transparent hover:border-blue-300 dark:hover:border-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
+    class="entry-link flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 font-medium no-underline transition-colors duration-100 hover:bg-blue-50 dark:hover:bg-blue-950/40"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span class="truncate min-w-0">{{ .Name }}</span></a>
 </li>
 {{ else }}
-<li class="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+<li class="border-b border-gray-200 dark:border-gray-800 last:border-b-0">
   <a
     href="{{ .Href }}"
     title="{{ .Name }}"
@@ -52,7 +52,7 @@
     data-entry-type="note"
     data-entry-href="{{ .Href }}"
     {{ if .ID }}data-note-uid="{{ .ID }}"{{ end }}
-    class="entry-link flex items-start gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 border border-transparent hover:border-blue-300 dark:hover:border-blue-600">{{ template "note_icon" .Type }}<span class="min-w-0 flex-1"><span class="block truncate">{{ .Name }}</span>{{ if or .Date .Type .ID }}<span class="block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ if .Date }}{{ .Date }}{{ end }}{{ if .Type }}{{ if .Date }} · {{ end }}{{ .Type }}{{ end }}{{ if .ID }}{{ if or .Date .Type }} · {{ end }}#{{ .ID }}{{ end }}</span>{{ end }}{{ if .Description }}<span class="block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ .Description }}</span>{{ end }}</span></a>
+    class="entry-link flex items-start gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 no-underline transition-colors duration-100 hover:bg-blue-50 dark:hover:bg-blue-950/40">{{ template "note_icon" .Type }}<span class="min-w-0 flex-1"><span class="block truncate">{{ .Name }}</span>{{ if or .Date .Type .ID }}<span class="block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ if .Date }}{{ .Date }}{{ end }}{{ if .Type }}{{ if .Date }} · {{ end }}{{ .Type }}{{ end }}{{ if .ID }}{{ if or .Date .Type }} · {{ end }}#{{ .ID }}{{ end }}</span>{{ end }}{{ if .Description }}<span class="block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ .Description }}</span>{{ end }}</span></a>
 </li>
 {{ end }}
 {{ end }}
