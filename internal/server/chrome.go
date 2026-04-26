@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 )
 
 // viewPath percent-encodes each segment of a relative file/dir path for
-// use in /view/ URLs, so names with spaces, #, ? etc. produce valid hrefs.
+// use in URLs, so names with spaces, #, ? etc. produce valid hrefs.
 func viewPath(relPath string) string {
 	segments := strings.Split(relPath, "/")
 	for i, s := range segments {
@@ -26,9 +27,9 @@ func tagPath(tag string) string {
 }
 
 // readDirEntries returns the visible entries of a notes directory as
-// IndexEntry values. Directory entries link to /dir/{path}, file entries
-// link to /view/{path}. A non-nil idx populates Type from each .md
-// file's frontmatter so the UI can render type-aware icons.
+// IndexEntry values. File entries link to /n/{id} when the note is in the
+// index; directory entries carry no href since there is no directory handler.
+// A non-nil idx populates Type from each .md file's frontmatter.
 func readDirEntries(absPath, relPath string, idx *index.NoteIndex) ([]IndexEntry, error) {
 	dirEntries, err := os.ReadDir(absPath)
 	if err != nil {
@@ -47,20 +48,16 @@ func readDirEntries(absPath, relPath string, idx *index.NoteIndex) ([]IndexEntry
 		if relPath != "" {
 			entryRel = filepath.ToSlash(filepath.Join(relPath, name))
 		}
-		var href string
-		if de.IsDir() {
-			href = "/dir/" + viewPath(entryRel)
-		} else {
-			href = "/view/" + viewPath(entryRel)
-		}
 		entry := IndexEntry{
 			Name:  name,
 			IsDir: de.IsDir(),
-			Href:  href,
 		}
 		if !de.IsDir() && idx != nil {
 			if ne, ok := idx.NoteEntryByRel(entryRel); ok {
 				entry.Type = ne.Type
+				if ne.ID > 0 {
+					entry.Href = fmt.Sprintf("/n/%d", ne.ID)
+				}
 			}
 		}
 		entries = append(entries, entry)

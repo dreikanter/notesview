@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/dreikanter/nview/internal/index"
@@ -29,21 +30,9 @@ func buildInitialJSON(selectedPath string) template.JS {
 	return template.JS(b)
 }
 
-// buildLayoutFields assembles the common chrome every full-page render needs.
-func (s *Server) buildLayoutFields(title, editPath string) layoutFields {
-	lf := layoutFields{
-		Title:    title,
-		EditPath: editPath,
-	}
-	if editPath != "" {
-		lf.EditHref = editHref(editPath)
-	}
-	return lf
-}
-
-// editHref builds the API href for opening a note in the editor.
-func editHref(editPath string) string {
-	return "/api/edit/" + viewPath(editPath)
+// editHref builds the API href for triggering the editor for a given note ID.
+func editHref(noteID int) string {
+	return fmt.Sprintf("/api/edit/%d", noteID)
 }
 
 // viewSSEWatch is the value for the sse-connect attribute on note_pane_body.
@@ -63,23 +52,21 @@ func hxTargetedAt(r *http.Request, id string) bool {
 	return r.Header.Get("HX-Target") == id
 }
 
-// handleRoot is the entry point for /. It redirects to README.md if
-// one exists at the notes root. Otherwise it renders the two-pane
-// layout with an empty-state placeholder where the note would be.
+// handleRoot is the entry point for /. It redirects to /n/readme when a
+// note with slug "readme" exists. Otherwise it renders the two-pane layout
+// with an empty-state placeholder.
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
 
-	readme := filepath.Join(s.root, "README.md")
-	if _, err := os.Stat(readme); err == nil {
-		http.Redirect(w, r, "/view/README.md", http.StatusFound)
+	if _, ok := s.index.Resolve("readme"); ok {
+		http.Redirect(w, r, "/n/readme", http.StatusFound)
 		return
 	}
 
-	// Empty state: render the two-pane layout with no note.
-	lf := s.buildLayoutFields("", "")
+	lf := layoutFields{Title: ""}
 	tagsCard := s.buildTagsIndex()
 	s.index.Rebuild()
 
@@ -99,20 +86,26 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
-	reqPath := r.PathValue("filepath")
-	absPath, err := SafePath(s.root, reqPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+// handleNote serves GET /n/{x} where x is a slug or numeric ID.
+func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
+	x := r.PathValue("x")
+
+	relPath, ok := s.index.Resolve(x)
+	if !ok {
+		if hxTargetedAt(r, "note-pane") {
+			s.writeNoteNotFoundPartial(w, x)
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
+	absPath := filepath.Join(s.root, filepath.FromSlash(relPath))
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if hxTargetedAt(r, "note-pane") {
-				// Empty-state partial with HTTP 200 so HTMX swaps it in.
-				s.writeNoteNotFoundPartial(w, reqPath)
+				s.writeNoteNotFoundPartial(w, x)
 				return
 			}
 			http.Error(w, "not found", http.StatusNotFound)
@@ -122,7 +115,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentDir := noteParentDir(reqPath)
+	currentDir := noteParentDir(relPath)
 
 	html, err := s.renderer.Render(data, currentDir)
 	if err != nil {
@@ -130,34 +123,35 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var note *index.NoteEntry
-	if entry, ok := s.index.NoteEntryByRel(reqPath); ok {
-		note = &entry
+	var noteEntry *index.NoteEntry
+	if entry, ok := s.index.NoteEntryByRel(relPath); ok {
+		noteEntry = &entry
 	}
 
-	title := filepath.Base(reqPath)
-	if note != nil && note.Title != "" {
-		title = note.Title
-		html = renderer.StripRedundantTitle(html, note.Title)
+	title := filepath.Base(relPath)
+	if noteEntry != nil && noteEntry.Title != "" {
+		title = noteEntry.Title
+		html = renderer.StripRedundantTitle(html, noteEntry.Title)
 	}
 	noteTitle := title
 
 	editPath := ""
 	eHref := ""
-	if s.editor != "" {
-		editPath = reqPath
-		eHref = editHref(reqPath)
+	if s.editor != "" && noteEntry != nil && noteEntry.ID > 0 {
+		editPath = relPath
+		eHref = editHref(noteEntry.ID)
 	}
 
-	// Note-pane partial response: return only the note body, no chrome.
+	viewHref := "/n/" + url.PathEscape(x)
+
 	if hxTargetedAt(r, "note-pane") {
 		partial := NotePartialData{
-			NotePath:  reqPath,
+			NotePath:  relPath,
 			NoteTitle: noteTitle,
-			Note:      note,
+			Note:      noteEntry,
 			HTML:      template.HTML(html),
-			SSEWatch:  viewSSEWatch(reqPath),
-			ViewHref:  "/view/" + viewPath(reqPath),
+			SSEWatch:  viewSSEWatch(relPath),
+			ViewHref:  viewHref,
 			EditPath:  editPath,
 			EditHref:  eHref,
 		}
@@ -168,21 +162,20 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Full page: build sidebar with tags section.
-	lf := s.buildLayoutFields(title, editPath)
+	lf := layoutFields{Title: title, EditPath: editPath, EditHref: eHref}
 	tagsCard := s.buildTagsIndex()
 
 	view := ViewData{
 		layoutFields: lf,
-		NotePath:     reqPath,
+		NotePath:     relPath,
 		NoteTitle:    noteTitle,
-		Note:         note,
+		Note:         noteEntry,
 		HTML:         template.HTML(html),
-		SSEWatch:     viewSSEWatch(reqPath),
-		ViewHref:     "/view/" + viewPath(reqPath),
+		SSEWatch:     viewSSEWatch(relPath),
+		ViewHref:     viewHref,
 		Sidebar: SidebarData{
 			Tags:        tagsCard,
-			InitialJSON: buildInitialJSON(reqPath),
+			InitialJSON: buildInitialJSON(relPath),
 		},
 	}
 
@@ -195,33 +188,15 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 // writeNoteNotFoundPartial serves the "note not found" fragment for an
 // HX-Target: note-pane request, using HTTP 200 so HTMX swaps it in
 // rather than skipping the swap on a 4xx status.
-func (s *Server) writeNoteNotFoundPartial(w http.ResponseWriter, reqPath string) {
+func (s *Server) writeNoteNotFoundPartial(w http.ResponseWriter, x string) {
 	partial := NotePartialData{
-		NotePath:  reqPath,
-		NoteTitle: filepath.Base(reqPath),
+		NoteTitle: x,
 		HTML:      template.HTML(`<p class="text-gray-500 text-center py-8">Note not found.</p>`),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.renderNotePartial(w, partial); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-// buildDirIndex assembles an IndexCard in directory mode for a path
-// relative to the notes root.
-func (s *Server) buildDirIndex(sidebarDir string) (*IndexCard, error) {
-	absPath, err := SafePath(s.root, sidebarDir)
-	if err != nil {
-		return nil, err
-	}
-	entries, err := readDirEntries(absPath, sidebarDir, s.index)
-	if err != nil {
-		return nil, err
-	}
-	return &IndexCard{
-		Entries: entries,
-		Empty:   "No files here.",
-	}, nil
 }
 
 // buildTagsIndex assembles an IndexCard in tags mode from the tag index.
@@ -252,12 +227,18 @@ func noteParentDir(notePath string) string {
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
-	reqPath := r.PathValue("filepath")
-	absPath, err := SafePath(s.root, reqPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	relPath, ok := s.index.NoteByID(id)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	absPath := filepath.Join(s.root, filepath.FromSlash(relPath))
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -269,15 +250,20 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if _, err := w.Write(data); err != nil {
-		s.logger.Warn("write response failed", "path", reqPath, "err", err)
+		s.logger.Warn("write response failed", "id", id, "err", err)
 	}
 }
 
 func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
-	reqPath := r.PathValue("filepath")
-	absPath, err := SafePath(s.root, reqPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	relPath, ok := s.index.NoteByID(id)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	if s.editor == "" {
@@ -296,6 +282,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editorBin, editorArgs := fields[0], fields[1:]
+	absPath := filepath.Join(s.root, filepath.FromSlash(relPath))
 	args := append(append([]string{}, editorArgs...), absPath)
 
 	if err := openEditor(editorBin, args); err != nil {
@@ -304,48 +291,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		s.logger.Warn("write response failed", "path", reqPath, "err", err)
-	}
-}
-
-func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
-	dirPath := r.PathValue("path")
-
-	card, err := s.buildDirIndex(dirPath)
-	if err != nil {
-		s.logger.Warn("dir listing build failed", "dir", dirPath, "err", err)
-		card = &IndexCard{Empty: "Failed to read directory."}
-	}
-	title := dirPath
-	if title == "" {
-		title = "/"
-	}
-	listing := DirListingData{Title: title, IndexCard: card}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// Main panel partial: flat listing of this directory.
-	if hxTargetedAt(r, "note-pane") {
-		if err := s.templates.renderDirListing(w, listing); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Full-page load (direct URL visit / reload): render two-pane layout
-	// with directory listing in the main panel.
-	view := ViewData{
-		layoutFields: s.buildLayoutFields(title, ""),
-		HTML:         template.HTML(""),
-		ViewHref:     "/dir/" + viewPath(dirPath),
-		Sidebar: SidebarData{
-			Tags:        s.buildTagsIndex(),
-			InitialJSON: buildInitialJSON(dirPath),
-		},
-		DirListing: &listing,
-	}
-	if err := s.templates.renderView(w, view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.logger.Warn("write response failed", "id", id, "err", err)
 	}
 }
 
@@ -358,9 +304,8 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	// Full-page load
 	view := ViewData{
-		layoutFields: s.buildLayoutFields("Tags", ""),
+		layoutFields: layoutFields{Title: "Tags"},
 		ViewHref:     "/tags",
 		Sidebar: SidebarData{
 			Tags:        card,
@@ -377,14 +322,15 @@ func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
 	notes := s.index.NotesByTag(tag)
 	entries := make([]IndexEntry, len(notes))
-	for i, notePath := range notes {
-		entries[i] = IndexEntry{
-			Name: notePath,
-			Href: "/view/" + viewPath(notePath),
+	for i, relPath := range notes {
+		entry := IndexEntry{Name: relPath}
+		if ne, ok := s.index.NoteEntryByRel(relPath); ok {
+			entry.Type = ne.Type
+			if ne.ID > 0 {
+				entry.Href = fmt.Sprintf("/n/%d", ne.ID)
+			}
 		}
-		if ne, ok := s.index.NoteEntryByRel(notePath); ok {
-			entries[i].Type = ne.Type
-		}
+		entries[i] = entry
 	}
 	card := &IndexCard{
 		Entries: entries,
@@ -393,7 +339,6 @@ func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// HTMX partial: note-pane listing of tagged notes.
 	if hxTargetedAt(r, "note-pane") {
 		if err := s.templates.renderDirListing(w, DirListingData{Title: tag, IndexCard: card}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -401,16 +346,169 @@ func (s *Server) handleTagNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Full-page load (direct URL visit / reload).
 	tagsCard := s.buildTagsIndex()
 	view := ViewData{
-		layoutFields: s.buildLayoutFields(tag, ""),
+		layoutFields: layoutFields{Title: tag},
 		ViewHref:     "/tags/" + tagPath(tag),
 		Sidebar: SidebarData{
 			Tags:        tagsCard,
 			InitialJSON: buildInitialJSON(""),
 		},
 		DirListing: &DirListingData{Title: tag, IndexCard: card},
+	}
+	if err := s.templates.renderView(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleTypes(w http.ResponseWriter, r *http.Request) {
+	types := s.index.Types()
+	entries := make([]IndexEntry, len(types))
+	for i, typ := range types {
+		entries[i] = IndexEntry{
+			Name: typ,
+			Href: "/types/" + tagPath(typ),
+		}
+	}
+	card := &IndexCard{
+		Entries: entries,
+		Empty:   "No types found.",
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if hxTargetedAt(r, "note-pane") {
+		if err := s.templates.renderDirListing(w, DirListingData{Title: "Types", IndexCard: card}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	view := ViewData{
+		layoutFields: layoutFields{Title: "Types"},
+		ViewHref:     "/types",
+		Sidebar: SidebarData{
+			Tags:        s.buildTagsIndex(),
+			InitialJSON: buildInitialJSON(""),
+		},
+		DirListing: &DirListingData{Title: "Types", IndexCard: card},
+	}
+	if err := s.templates.renderView(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleTypeNotes(w http.ResponseWriter, r *http.Request) {
+	typ := r.PathValue("type")
+	notes := s.index.NotesByType(typ)
+	entries := make([]IndexEntry, len(notes))
+	for i, relPath := range notes {
+		entry := IndexEntry{Name: relPath, Type: typ}
+		if ne, ok := s.index.NoteEntryByRel(relPath); ok {
+			if ne.ID > 0 {
+				entry.Href = fmt.Sprintf("/n/%d", ne.ID)
+			}
+		}
+		entries[i] = entry
+	}
+	card := &IndexCard{
+		Entries: entries,
+		Empty:   "No notes with this type.",
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if hxTargetedAt(r, "note-pane") {
+		if err := s.templates.renderDirListing(w, DirListingData{Title: typ, IndexCard: card}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	view := ViewData{
+		layoutFields: layoutFields{Title: typ},
+		ViewHref:     "/types/" + tagPath(typ),
+		Sidebar: SidebarData{
+			Tags:        s.buildTagsIndex(),
+			InitialJSON: buildInitialJSON(""),
+		},
+		DirListing: &DirListingData{Title: typ, IndexCard: card},
+	}
+	if err := s.templates.renderView(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
+	dates := s.index.Dates()
+	entries := make([]IndexEntry, len(dates))
+	for i, d := range dates {
+		entries[i] = IndexEntry{
+			Name: d,
+			Href: "/dates/" + d,
+		}
+	}
+	card := &IndexCard{
+		Entries: entries,
+		Empty:   "No dates found.",
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if hxTargetedAt(r, "note-pane") {
+		if err := s.templates.renderDirListing(w, DirListingData{Title: "Dates", IndexCard: card}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	view := ViewData{
+		layoutFields: layoutFields{Title: "Dates"},
+		ViewHref:     "/dates",
+		Sidebar: SidebarData{
+			Tags:        s.buildTagsIndex(),
+			InitialJSON: buildInitialJSON(""),
+		},
+		DirListing: &DirListingData{Title: "Dates", IndexCard: card},
+	}
+	if err := s.templates.renderView(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handleDateNotes serves GET /dates/{date} where date is YYYY, YYYY-MM, or
+// YYYY-MM-DD. Dashes are stripped to form the YYYYMMDD prefix used by the
+// index.
+func (s *Server) handleDateNotes(w http.ResponseWriter, r *http.Request) {
+	dateParam := r.PathValue("date")
+	// Normalise "2026-03-31" → "20260331", "2026-03" → "202603", "2026" → "2026"
+	prefix := strings.ReplaceAll(dateParam, "-", "")
+	notes := s.index.NotesByDatePrefix(prefix)
+	entries := make([]IndexEntry, len(notes))
+	for i, relPath := range notes {
+		entry := IndexEntry{Name: relPath}
+		if ne, ok := s.index.NoteEntryByRel(relPath); ok {
+			entry.Type = ne.Type
+			if ne.ID > 0 {
+				entry.Href = fmt.Sprintf("/n/%d", ne.ID)
+			}
+		}
+		entries[i] = entry
+	}
+	card := &IndexCard{
+		Entries: entries,
+		Empty:   "No notes for this date.",
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if hxTargetedAt(r, "note-pane") {
+		if err := s.templates.renderDirListing(w, DirListingData{Title: dateParam, IndexCard: card}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	view := ViewData{
+		layoutFields: layoutFields{Title: dateParam},
+		ViewHref:     "/dates/" + dateParam,
+		Sidebar: SidebarData{
+			Tags:        s.buildTagsIndex(),
+			InitialJSON: buildInitialJSON(""),
+		},
+		DirListing: &DirListingData{Title: dateParam, IndexCard: card},
 	}
 	if err := s.templates.renderView(w, view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

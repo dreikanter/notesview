@@ -1,11 +1,12 @@
 // Package renderer's noteext.go implements NoteLinkExtension: a goldmark
-// extension that rewrites internal link destinations, resolves [[UID]]
+// extension that rewrites internal link destinations, resolves [[slug-or-id]]
 // wiki-links, and emits HTMX attributes on internal <a> tags.
 package renderer
 
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
@@ -20,11 +21,10 @@ import (
 	"github.com/dreikanter/nview/internal/index"
 )
 
-// wikiLinkParser is a goldmark InlineParser that recognizes [[UID]]
-// syntax and emits a Link node pointing at the resolved note. The
-// trigger byte is '[', which goldmark dispatches on as punctuation.
-// If the pattern doesn't match or the UID doesn't resolve, the parser
-// returns nil and goldmark's standard link parser handles the '['.
+// wikiLinkParser is a goldmark InlineParser that recognises [[slug-or-id]]
+// syntax and emits a Link node pointing at /n/{slug-or-id}. The trigger
+// byte is '['. If the inner text doesn't resolve via the shared resolver,
+// the parser returns nil so goldmark renders it as literal text.
 type wikiLinkParser struct{}
 
 func (p *wikiLinkParser) Trigger() []byte {
@@ -45,8 +45,8 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	}
 	inner := line[2 : 2+end]
 
-	uid := string(inner)
-	if !index.IsUID(uid) {
+	x := string(inner)
+	if strings.TrimSpace(x) == "" {
 		return nil
 	}
 
@@ -59,17 +59,16 @@ func (p *wikiLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 		return nil
 	}
 
-	relPath, ok := state.idx.NoteByUID(uid)
-	if !ok {
+	if _, ok := state.idx.Resolve(x); !ok {
 		return nil
 	}
 
-	// Consume [[ + UID + ]]
+	// Consume [[ + inner + ]]
 	block.Advance(2 + end + 2)
 	link := ast.NewLink()
-	link.Destination = []byte("/view/" + relPath)
-	link.SetAttributeString("class", []byte("uid-link"))
-	link.AppendChild(link, ast.NewString([]byte(uid)))
+	link.Destination = []byte("/n/" + url.PathEscape(x))
+	link.SetAttributeString("class", []byte("wiki-link"))
+	link.AppendChild(link, ast.NewString([]byte(x)))
 	return link
 }
 
@@ -138,21 +137,24 @@ func (t *noteLinkTransformer) Transform(doc *ast.Document, reader text.Reader, p
 }
 
 // rewriteLinkDestination mutates a single *ast.Link in place. It handles
-// two internal-link shapes: note://UID and relative .md paths. Anything
-// else — absolute URLs with a scheme, protocol-relative, root-absolute
-// paths, non-.md — is left alone and will render as a plain <a href>
-// because the custom renderer's internal-link check won't match.
+// two internal-link shapes:
+//   - note://x  → validated via Resolve; destination becomes /n/{x}
+//   - relative .md path → resolved to rel-path, looked up by rel-path for
+//     its numeric ID, destination becomes /n/{id}
+//
+// Anything else — absolute URLs with a scheme, root-absolute paths,
+// non-.md — is left alone.
 func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 	dest := string(n.Destination)
 
 	if strings.HasPrefix(dest, "note://") {
-		uid := strings.TrimPrefix(dest, "note://")
-		if relPath, ok := s.idx.NoteByUID(uid); ok {
-			n.Destination = []byte("/view/" + relPath)
+		x := strings.TrimPrefix(dest, "note://")
+		if _, ok := s.idx.Resolve(x); ok {
+			n.Destination = []byte("/n/" + url.PathEscape(x))
 		} else {
 			n.Destination = []byte("#")
 			n.SetAttributeString("class", []byte("broken-link"))
-			n.SetAttributeString("title", []byte(fmt.Sprintf("Note %s not found", uid)))
+			n.SetAttributeString("title", []byte(fmt.Sprintf("Note %s not found", x)))
 		}
 		return
 	}
@@ -166,12 +168,16 @@ func rewriteLinkDestination(n *ast.Link, s *noteLinkState) {
 	}
 	resolved := path.Clean(path.Join(s.currentDir, dest))
 	resolved = strings.TrimPrefix(resolved, "/")
-	n.Destination = []byte("/view/" + resolved)
+	if entry, ok := s.idx.NoteEntryByRel(resolved); ok {
+		n.Destination = []byte(fmt.Sprintf("/n/%d", entry.ID))
+	}
+	// If the .md target is not in the index, leave the destination unchanged.
+	// It will produce a broken link, which is honest about the missing note.
 }
 
 // noteLinkRenderer overrides goldmark's default *ast.Link renderer so
 // we can emit HTMX attributes on internal links. External links (and
-// anything else that didn't get rewritten to a /view/... destination)
+// anything else that didn't get rewritten to a /n/... destination)
 // fall through as plain <a href>.
 //
 // This is a goldmark renderer.NodeRenderer; its RegisterFuncs method
@@ -278,9 +284,9 @@ func (r *noteLinkRenderer) renderLink(w util.BufWriter, source []byte, node ast.
 }
 
 // isInternalLink returns true if the destination points at a note the
-// server knows how to serve (via /view/...). Broken note:// links have
+// server knows how to serve (via /n/...). Broken note:// links have
 // been rewritten to "#" and do NOT count as internal — they should
 // render without hx-boost so clicking them is inert.
 func isInternalLink(dest []byte) bool {
-	return bytes.HasPrefix(dest, []byte("/view/"))
+	return bytes.HasPrefix(dest, []byte("/n/"))
 }
