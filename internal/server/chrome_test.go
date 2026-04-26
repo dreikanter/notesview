@@ -57,48 +57,27 @@ func TestReadDirEntries(t *testing.T) {
 		}
 	})
 
-	t.Run("directory entries link to /dir/", func(t *testing.T) {
+	t.Run("directory entries have no href", func(t *testing.T) {
 		entries, err := readDirEntries(tmp, "notes", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// "alpha" dir entry should link to /dir/notes/alpha
-		alphaEntry := entries[0]
-		want := "/dir/notes/alpha"
-		if alphaEntry.Href != want {
-			t.Errorf("dir href = %q, want %q", alphaEntry.Href, want)
+		for _, e := range entries {
+			if e.IsDir && e.Href != "" {
+				t.Errorf("dir %q should have no href, got %q", e.Name, e.Href)
+			}
 		}
 	})
 
-	t.Run("file entries link to /view/", func(t *testing.T) {
+	t.Run("file entries without index have no href", func(t *testing.T) {
 		entries, err := readDirEntries(tmp, "notes", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// "apple.md" is the first file entry (index 2)
-		appleEntry := entries[2]
-		want := "/view/notes/apple.md"
-		if appleEntry.Href != want {
-			t.Errorf("file href = %q, want %q", appleEntry.Href, want)
-		}
-	})
-
-	t.Run("empty relPath", func(t *testing.T) {
-		entries, err := readDirEntries(tmp, "", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// With empty relPath, dir entry name is used directly
-		alphaEntry := entries[0]
-		wantDirHref := "/dir/alpha"
-		if alphaEntry.Href != wantDirHref {
-			t.Errorf("dir href = %q, want %q", alphaEntry.Href, wantDirHref)
-		}
-		// File entry with empty relPath
-		appleEntry := entries[2]
-		wantFileHref := "/view/apple.md"
-		if appleEntry.Href != wantFileHref {
-			t.Errorf("file href = %q, want %q", appleEntry.Href, wantFileHref)
+		for _, e := range entries {
+			if !e.IsDir && e.Href != "" {
+				t.Errorf("file %q without index should have no href, got %q", e.Name, e.Href)
+			}
 		}
 	})
 

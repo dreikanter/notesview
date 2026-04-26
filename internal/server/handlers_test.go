@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,11 +10,28 @@ import (
 	"testing"
 )
 
+// setupTestServer creates a server rooted at a temp dir containing:
+//   - 2026/03/20260331_9201_todo.md  (slug=todo, tags=[todo,daily])
+//   - 2026/01/20260101_1_readme.md   (slug=readme)
+//   - README.md at root              (plain file for tree-listing tests only)
+//
+// ID 9201 is the primary test note; ID 1 provides the readme redirect target.
 func setupTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "2026", "03"), 0o755)
-	os.WriteFile(filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"), []byte("---\ntitle: Todo\ntags: [todo, daily]\n---\n# Todo\n- [x] Done\n- [ ] Pending\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	os.WriteFile(
+		filepath.Join(dir, "2026", "03", "20260331_9201_todo.md"),
+		[]byte("---\ntitle: Todo\ntags: [todo, daily]\n---\n# Todo\n- [x] Done\n- [ ] Pending\n"),
+		0o644,
+	)
+	os.WriteFile(
+		filepath.Join(dir, "2026", "01", "20260101_1_readme.md"),
+		[]byte("# Welcome\nHello"),
+		0o644,
+	)
+	// Plain README.md at root (not indexed; used only by tree API tests).
 	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Welcome\nHello"), 0o644)
 	srv, err := NewServer(dir, "", nil)
 	if err != nil {
@@ -22,11 +40,11 @@ func setupTestServer(t *testing.T) (*Server, string) {
 	return srv, dir
 }
 
-func TestViewHandler(t *testing.T) {
+func TestNoteHandlerBySlug(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md", nil)
+	req := httptest.NewRequest("GET", "/n/todo", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -51,11 +69,27 @@ func TestViewHandler(t *testing.T) {
 	}
 }
 
-func TestViewHandler404(t *testing.T) {
+func TestNoteHandlerByID(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/nonexistent.md", nil)
+	req := httptest.NewRequest("GET", "/n/9201", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), ">Todo<") {
+		t.Errorf("expected title in body")
+	}
+}
+
+func TestNoteHandler404(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/n/doesnotexist", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -64,15 +98,14 @@ func TestViewHandler404(t *testing.T) {
 	}
 }
 
-// TestViewHandlerNotePanePartial verifies that an HX-Request with
+// TestNoteHandlerNotePanePartial verifies that an HX-Request with
 // HX-Target: note-pane returns just the note-pane fragment, not a
-// full page. The response must contain the note body and must NOT
-// contain the sidebar or the topbar.
-func TestViewHandlerNotePanePartial(t *testing.T) {
+// full page.
+func TestNoteHandlerNotePanePartial(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md", nil)
+	req := httptest.NewRequest("GET", "/n/todo", nil)
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("HX-Target", "note-pane")
 	w := httptest.NewRecorder()
@@ -93,13 +126,13 @@ func TestViewHandlerNotePanePartial(t *testing.T) {
 	}
 }
 
-// TestViewHandler404Partial verifies that a missing note returned with
+// TestNoteHandler404Partial verifies that a missing note with
 // HX-Target: note-pane yields HTTP 200 and an empty-state body.
-func TestViewHandler404Partial(t *testing.T) {
+func TestNoteHandler404Partial(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/nonexistent.md", nil)
+	req := httptest.NewRequest("GET", "/n/doesnotexist", nil)
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("HX-Target", "note-pane")
 	w := httptest.NewRecorder()
@@ -113,8 +146,8 @@ func TestViewHandler404Partial(t *testing.T) {
 	}
 }
 
-// TestRootRedirectToReadme pins the / redirect behavior when README.md
-// exists at the notes root.
+// TestRootRedirectToReadme pins the / redirect behavior when a note with
+// slug "readme" exists.
 func TestRootRedirectToReadme(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
@@ -126,17 +159,19 @@ func TestRootRedirectToReadme(t *testing.T) {
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302", w.Code)
 	}
-	if loc := w.Header().Get("Location"); loc != "/view/README.md" {
-		t.Errorf("redirect location = %q, want /view/README.md", loc)
+	if loc := w.Header().Get("Location"); loc != "/n/readme" {
+		t.Errorf("redirect location = %q, want /n/readme", loc)
 	}
 }
 
-// TestRootEmptyState pins the no-README case: / renders the two-pane
-// layout with an empty note-pane and the sidebar at root.
+// TestRootEmptyState pins the no-readme case: / renders the two-pane
+// layout with an empty note-pane.
 func TestRootEmptyState(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "notes"), 0o755)
-	os.WriteFile(filepath.Join(dir, "notes", "hello.md"), []byte("# Hi"), 0o644)
+	// No note with slug "readme" in this dir; OSStore requires YYYY/MM layout
+	// so plain files at root are not indexed.
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	os.WriteFile(filepath.Join(dir, "2026", "01", "20260101_5.md"), []byte("# Hi"), 0o644)
 	srv, err := NewServer(dir, "", nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -163,15 +198,42 @@ func TestRawHandler(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/api/raw/README.md", nil)
+	// Note with ID 9201 is the todo note.
+	req := httptest.NewRequest("GET", "/api/raw/9201", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if w.Body.String() != "# Welcome\nHello" {
-		t.Errorf("raw = %q", w.Body.String())
+	if !strings.Contains(w.Body.String(), "Todo") {
+		t.Errorf("raw = %q, expected todo content", w.Body.String())
+	}
+}
+
+func TestRawHandlerInvalidID(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/api/raw/notanumber", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestRawHandlerUnknownID(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/api/raw/99999", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
 	}
 }
 
@@ -179,7 +241,8 @@ func TestPathTraversal(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/../../../etc/passwd", nil)
+	// The rejectDirtyPaths middleware blocks any URL containing "..".
+	req := httptest.NewRequest("GET", "/n/../../etc/passwd", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -192,7 +255,7 @@ func TestEditHandlerNoEditor(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("POST", "/api/edit/README.md", nil)
+	req := httptest.NewRequest("POST", "/api/edit/9201", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -202,13 +265,11 @@ func TestEditHandlerNoEditor(t *testing.T) {
 }
 
 // TestEditHandlerWhitespaceEditor guards against a nil-slice panic when
-// the editor env var is non-empty but contains only whitespace: the
-// `s.editor == ""` guard passes, strings.Fields returns an empty slice,
-// and a naive fields[0] indexing crashes the handler. The handler must
-// treat whitespace-only config as "not configured" and return 400.
+// the editor env var contains only whitespace.
 func TestEditHandlerWhitespaceEditor(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Hi"), 0o644); err != nil {
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "2026", "01", "20260101_7_note.md"), []byte("# Hi"), 0o644); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
 	srv, err := NewServer(dir, "   \t  ", nil)
@@ -217,7 +278,7 @@ func TestEditHandlerWhitespaceEditor(t *testing.T) {
 	}
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("POST", "/api/edit/note.md", nil)
+	req := httptest.NewRequest("POST", "/api/edit/7", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -226,7 +287,7 @@ func TestEditHandlerWhitespaceEditor(t *testing.T) {
 	}
 }
 
-func TestEditHandlerBadPath(t *testing.T) {
+func TestEditHandlerUnknownID(t *testing.T) {
 	dir := t.TempDir()
 	srv, err := NewServer(dir, "true", nil)
 	if err != nil {
@@ -234,7 +295,24 @@ func TestEditHandlerBadPath(t *testing.T) {
 	}
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("POST", "/api/edit/../etc/passwd", nil)
+	req := httptest.NewRequest("POST", "/api/edit/99999", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (unknown ID)", w.Code)
+	}
+}
+
+func TestEditHandlerInvalidID(t *testing.T) {
+	dir := t.TempDir()
+	srv, err := NewServer(dir, "true", nil)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("POST", "/api/edit/notanumber", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -247,7 +325,8 @@ func TestEditHandlerBadPath(t *testing.T) {
 // binary. Uses `true` so the test does not depend on any real editor.
 func TestEditHandlerSimpleEditor(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Hi"), 0o644); err != nil {
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "2026", "01", "20260101_7_note.md"), []byte("# Hi"), 0o644); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
 	srv, err := NewServer(dir, "true", nil)
@@ -256,7 +335,7 @@ func TestEditHandlerSimpleEditor(t *testing.T) {
 	}
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("POST", "/api/edit/note.md", nil)
+	req := httptest.NewRequest("POST", "/api/edit/7", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -269,24 +348,20 @@ func TestEditHandlerSimpleEditor(t *testing.T) {
 }
 
 // TestEditHandlerEditorWithArgs is the regression guard for #7: an $EDITOR
-// value with embedded arguments (e.g. `subl -w`, `code --wait`,
-// `nvim -R`) must be parsed into binary + args rather than treated as a
-// single binary name, otherwise exec() 500s with "file not found".
+// value with embedded arguments must split into binary + args.
 func TestEditHandlerEditorWithArgs(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Hi"), 0o644); err != nil {
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "2026", "01", "20260101_7_note.md"), []byte("# Hi"), 0o644); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
-	// `true` ignores all of these extra flags, so they're harmless, but a
-	// naive exec.Command would look for a literal binary named
-	// `"true --wait"` and fail.
 	srv, err := NewServer(dir, "true --wait -n", nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("POST", "/api/edit/note.md", nil)
+	req := httptest.NewRequest("POST", "/api/edit/7", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -309,18 +384,17 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-func TestViewStripsRedundantH1(t *testing.T) {
+func TestNoteHandlerStripsRedundantH1(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/2026/03/20260331_9201_todo.md", nil)
+	req := httptest.NewRequest("GET", "/n/todo", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	body := w.Body.String()
 	// The markdown has `# Todo` which matches frontmatter title "Todo".
-	// The rendered markdown body should not contain a duplicate <h1>Todo</h1>;
-	// unrelated later <h1> tags are fine.
+	// The rendered markdown body should not contain a duplicate <h1>Todo</h1>.
 	idx := strings.Index(body, `class="markdown-body`)
 	if idx == -1 {
 		t.Fatalf("expected markdown-body wrapper in body, got: %s", body)
@@ -328,44 +402,6 @@ func TestViewStripsRedundantH1(t *testing.T) {
 	md := body[idx:]
 	if strings.Contains(md, "<h1>Todo</h1>") {
 		t.Errorf("expected duplicate <h1>Todo</h1> to be stripped, got: %s", md)
-	}
-}
-
-func TestDirHandler(t *testing.T) {
-	srv, _ := setupTestServer(t)
-	handler := srv.Routes()
-
-	req := httptest.NewRequest("GET", "/dir/2026/03", nil)
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Target", "sidebar")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "20260331_9201_todo.md") {
-		t.Errorf("expected todo file in sidebar, got: %s", body)
-	}
-}
-
-func TestDirHandlerRoot(t *testing.T) {
-	srv, _ := setupTestServer(t)
-	handler := srv.Routes()
-
-	req := httptest.NewRequest("GET", "/dir/", nil)
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Target", "sidebar")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "2026") {
-		t.Errorf("expected year dir in root sidebar, got: %s", body)
 	}
 }
 
@@ -408,28 +444,6 @@ func TestTagNotesHandler(t *testing.T) {
 	}
 }
 
-func TestDirHandler_NotePanePartial(t *testing.T) {
-	srv, _ := setupTestServer(t)
-	handler := srv.Routes()
-
-	req := httptest.NewRequest("GET", "/dir/2026", nil)
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Target", "note-pane")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "03") {
-		t.Errorf("expected subdirectory '03' in listing, got: %s", body)
-	}
-	if !strings.Contains(body, `id="dir-listing"`) {
-		t.Errorf("expected dir-listing container, got: %s", body)
-	}
-}
-
 func TestTagsHandler_NotePanePartial(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
@@ -456,7 +470,6 @@ func TestTagNotesHandlerUnknownTag(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	// The note-pane response for an unknown tag shows an empty state.
 	req := httptest.NewRequest("GET", "/tags/nonexistent", nil)
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("HX-Target", "note-pane")
@@ -472,11 +485,123 @@ func TestTagNotesHandlerUnknownTag(t *testing.T) {
 	}
 }
 
-func TestViewEmbedsInitialSelectedPath(t *testing.T) {
+func TestTypesHandler(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	os.WriteFile(
+		filepath.Join(dir, "2026", "01", "20260101_10.journal.md"),
+		[]byte("---\ntitle: Day\ntype: journal\n---\n# Day\n"),
+		0o644,
+	)
+	srv, err := NewServer(dir, "", nil)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/types", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "journal") {
+		t.Errorf("expected type 'journal' in response, got: %s", w.Body.String())
+	}
+}
+
+func TestTypeNotesHandler(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	os.WriteFile(
+		filepath.Join(dir, "2026", "01", "20260101_10.journal.md"),
+		[]byte("---\ntitle: Day\ntype: journal\n---\n# Day\n"),
+		0o644,
+	)
+	srv, err := NewServer(dir, "", nil)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/types/journal", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "20260101_10.journal.md") {
+		t.Errorf("expected journal note in listing, got: %s", w.Body.String())
+	}
+}
+
+func TestDatesHandler(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	handler := srv.Routes()
 
-	req := httptest.NewRequest("GET", "/view/README.md", nil)
+	req := httptest.NewRequest("GET", "/dates", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	// Fixture has notes from 2026/01/01 and 2026/03/31.
+	body := w.Body.String()
+	if !strings.Contains(body, "20260331") {
+		t.Errorf("expected date 20260331 in response, got: %s", body)
+	}
+}
+
+func TestDateNotesHandler(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dates/2026-03", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "20260331_9201_todo.md") {
+		t.Errorf("expected todo note for 2026-03, got: %s", w.Body.String())
+	}
+}
+
+func TestDateNotesHandlerNoMatch(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/dates/2025", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "No notes") {
+		t.Errorf("expected empty state for 2025, got: %s", w.Body.String())
+	}
+}
+
+func TestNoteHandlerEmbedsInitialSelectedPath(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/n/todo", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -484,38 +609,9 @@ func TestViewEmbedsInitialSelectedPath(t *testing.T) {
 	if !strings.Contains(body, `id="tv-initial"`) {
 		t.Errorf("expected tv-initial script tag, got: %s", body)
 	}
-	if !strings.Contains(body, `"selectedPath":"README.md"`) {
-		t.Errorf("expected selectedPath=README.md in initial JSON, got: %s", body)
-	}
-}
-
-func TestDirEmbedsInitialSelectedPath(t *testing.T) {
-	srv, _ := setupTestServer(t)
-	handler := srv.Routes()
-
-	req := httptest.NewRequest("GET", "/dir/2026", nil)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	body := w.Body.String()
-	if !strings.Contains(body, `"selectedPath":"2026"`) {
-		t.Errorf("expected selectedPath=2026 in initial JSON, got: %s", body)
-	}
-}
-
-func TestRootEmbedsNullSelectedPath(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("x"), 0o644)
-	srv, _ := NewServer(dir, "", nil)
-	handler := srv.Routes()
-
-	req := httptest.NewRequest("GET", "/", nil)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	body := w.Body.String()
-	if !strings.Contains(body, `"selectedPath":null`) {
-		t.Errorf("expected selectedPath=null at empty root, got: %s", body)
+	// selectedPath is the rel-path, not the slug.
+	if !strings.Contains(body, `"selectedPath":"2026/03/20260331_9201_todo.md"`) {
+		t.Errorf("expected selectedPath=relPath in initial JSON, got: %s", body)
 	}
 }
 
@@ -533,3 +629,38 @@ func TestTagsEmbedsNullSelectedPath(t *testing.T) {
 	}
 }
 
+func TestRootEmbedsNullSelectedPath(t *testing.T) {
+	dir := t.TempDir()
+	// Only a note with no slug "readme", so root shows empty state.
+	os.MkdirAll(filepath.Join(dir, "2026", "01"), 0o755)
+	os.WriteFile(filepath.Join(dir, "2026", "01", "20260101_5.md"), []byte("x"), 0o644)
+	srv, _ := NewServer(dir, "", nil)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"selectedPath":null`) {
+		t.Errorf("expected selectedPath=null at empty root, got: %s", body)
+	}
+}
+
+// TestTagNotesHandlerHrefUsesNID verifies that tag-filtered note listings
+// produce /n/{id} hrefs.
+func TestTagNotesHandlerHrefUsesNID(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	handler := srv.Routes()
+
+	req := httptest.NewRequest("GET", "/tags/todo", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "note-pane")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, fmt.Sprintf(`href="/n/%d"`, 9201)) {
+		t.Errorf("expected /n/9201 href in tag listing, got: %s", body)
+	}
+}

@@ -5,59 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dreikanter/notesctl/note"
 
 	"github.com/dreikanter/nview/internal/index"
 )
-
-// TestWikiLinkResolved verifies that [[UID]] syntax produces a link
-// to the resolved note with uid-link class and HTMX attributes.
-func TestWikiLinkResolved(t *testing.T) {
-	idx := setupTestIndex(t)
-	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [[20260331_9201]] for details.`), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md")
-	assertAttr(t, a, "class", "uid-link")
-	assertAttr(t, a, "hx-boost", "true")
-	assertAttr(t, a, "hx-target", "#note-pane")
-}
-
-// TestWikiLinkUnresolved verifies that [[UID]] with a non-existent
-// UID passes through as literal text (goldmark renders it as
-// [[text]] since neither [ nor ] is consumed).
-func TestWikiLinkUnresolved(t *testing.T) {
-	idx := setupTestIndex(t)
-	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [[99999999_0000]] here.`), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(html, `href="/view/`) {
-		t.Errorf("unresolved [[UID]] should not produce a link:\n%s", html)
-	}
-	// The literal text should remain visible.
-	if !strings.Contains(html, "99999999_0000") {
-		t.Errorf("unresolved UID text should be preserved:\n%s", html)
-	}
-}
-
-// TestWikiLinkInvalidPattern verifies that [[not-a-uid]] is not
-// consumed by the wiki-link parser and passes through as literal text.
-func TestWikiLinkInvalidPattern(t *testing.T) {
-	idx := setupTestIndex(t)
-	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [[hello_world]] here.`), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(html, `class="uid-link"`) {
-		t.Errorf("[[non-UID]] should not be treated as wiki-link:\n%s", html)
-	}
-}
 
 func setupTestIndex(t *testing.T) *index.NoteIndex {
 	t.Helper()
@@ -78,14 +31,103 @@ func setupTestIndex(t *testing.T) *index.NoteIndex {
 	return idx
 }
 
-func TestNoteProtocolLink(t *testing.T) {
+// TestWikiLinkBySlug verifies that [[slug]] syntax produces a link to
+// /n/{slug} with wiki-link class and HTMX attributes.
+func TestWikiLinkBySlug(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [my todo](note://20260331_9201) for details.`), "")
+	html, err := r.Render([]byte(`See [[todo]] for details.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md")
+	a := findAnchor(t, html, "href", "/n/todo")
+	assertAttr(t, a, "class", "wiki-link")
+	assertAttr(t, a, "hx-boost", "true")
+	assertAttr(t, a, "hx-target", "#note-pane")
+}
+
+// TestWikiLinkByID verifies that [[9201]] (all-digits) resolves via the
+// integer ID path and produces a link to /n/9201.
+func TestWikiLinkByID(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	html, err := r.Render([]byte(`See [[9201]] for details.`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", "/n/9201")
+	assertAttr(t, a, "class", "wiki-link")
+	assertAttr(t, a, "hx-boost", "true")
+	assertAttr(t, a, "hx-target", "#note-pane")
+}
+
+// TestWikiLinkUnresolved verifies that [[text]] with a slug that doesn't
+// exist passes through as literal text (goldmark renders it unchanged
+// because the parser returns nil).
+func TestWikiLinkUnresolved(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	html, err := r.Render([]byte(`See [[doesnotexist]] here.`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, `href="/n/`) {
+		t.Errorf("unresolved [[slug]] should not produce a link:\n%s", html)
+	}
+	if !strings.Contains(html, "doesnotexist") {
+		t.Errorf("unresolved slug text should be preserved:\n%s", html)
+	}
+}
+
+// TestWikiLinkAlias verifies that [[alias]] resolves via the alias fallback.
+func TestWikiLinkAlias(t *testing.T) {
+	s := note.NewMemStore()
+	if _, err := s.Put(note.Entry{
+		ID: 42,
+		Meta: note.Meta{
+			CreatedAt: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+			Slug:      "kubernetes-notes",
+			Aliases:   []string{"k8s"},
+		},
+	}); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	idx := index.New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	r := NewRenderer(idx)
+	html, err := r.Render([]byte(`See [[k8s]] for details.`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", "/n/k8s")
+	assertAttr(t, a, "class", "wiki-link")
+	assertAttr(t, a, "hx-boost", "true")
+}
+
+func TestNoteProtocolLink(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	// note://todo resolves via slug.
+	html, err := r.Render([]byte(`See [my todo](note://todo) for details.`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", "/n/todo")
+	assertAttr(t, a, "hx-boost", "true")
+	assertAttr(t, a, "hx-target", "#note-pane")
+}
+
+func TestNoteProtocolLinkByID(t *testing.T) {
+	idx := setupTestIndex(t)
+	r := NewRenderer(idx)
+	// note://9201 resolves via integer ID.
+	html, err := r.Render([]byte(`See [my todo](note://9201) for details.`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := findAnchor(t, html, "href", "/n/9201")
 	assertAttr(t, a, "hx-boost", "true")
 	assertAttr(t, a, "hx-target", "#note-pane")
 }
@@ -93,7 +135,7 @@ func TestNoteProtocolLink(t *testing.T) {
 func TestBrokenNoteLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [missing](note://99999999_0000) link.`), "")
+	html, err := r.Render([]byte(`See [missing](note://doesnotexist) link.`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,11 +148,12 @@ func TestBrokenNoteLink(t *testing.T) {
 func TestRelativeMdLink(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	html, err := r.Render([]byte(`See [other](../01/foo.md) for details.`), "2026/03")
+	// Link to 20260330_9198.md from the same directory (2026/03).
+	html, err := r.Render([]byte(`See [other](./20260330_9198.md) for details.`), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := findAnchor(t, html, "href", "/view/2026/01/foo.md")
+	a := findAnchor(t, html, "href", "/n/9198")
 	assertAttr(t, a, "hx-boost", "true")
 	assertAttr(t, a, "hx-target", "#note-pane")
 }
@@ -239,13 +282,14 @@ func TestShortenURL(t *testing.T) {
 func TestInternalLinksNoDirQuery(t *testing.T) {
 	idx := setupTestIndex(t)
 	r := NewRenderer(idx)
-	input := `See [todo](note://20260331_9201), [rel](../03/20260330_9198.md), and [[20260331_9201]].`
+	input := `See [todo](note://todo), [rel](./20260330_9198.md), and [[9201]].`
 	html, err := r.Render([]byte(input), "2026/03")
 	if err != nil {
 		t.Fatal(err)
 	}
-	findAnchor(t, html, "href", "/view/2026/03/20260331_9201_todo.md")
-	findAnchor(t, html, "href", "/view/2026/03/20260330_9198.md")
+	findAnchor(t, html, "href", "/n/todo")
+	findAnchor(t, html, "href", "/n/9198")
+	findAnchor(t, html, "href", "/n/9201")
 	if strings.Contains(html, "?dir=") {
 		t.Errorf("internal links should not contain ?dir= query parameter:\n%s", html)
 	}

@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,67 +42,137 @@ func singleEntryStore(id int, createdAt time.Time, slug, noteType string, tags [
 	return s
 }
 
-// --- NoteByUID ---
+// --- Resolve ---
 
-func TestNoteByUID(t *testing.T) {
+func TestResolveByID(t *testing.T) {
 	s := note.NewMemStore()
 	putEntry(s, note.Entry{ID: 9201, Meta: note.Meta{CreatedAt: day(2026, 3, 31), Slug: "todo"}})
-	putEntry(s, note.Entry{ID: 9198, Meta: note.Meta{CreatedAt: day(2026, 3, 30)}})
-	putEntry(s, note.Entry{ID: 8814, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Slug: "report"}})
-
 	idx := New(s, nil)
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-
-	cases := []struct {
-		uid     string
-		wantRel string
-		wantOK  bool
-	}{
-		{"20260331_9201", "2026/03/20260331_9201_todo.md", true},
-		{"20260330_9198", "2026/03/20260330_9198.md", true},
-		{"20260102_8814", "2026/01/20260102_8814_report.md", true},
-		{"99999999_0000", "", false},
-	}
-	for _, tt := range cases {
-		t.Run(tt.uid, func(t *testing.T) {
-			got, ok := idx.NoteByUID(tt.uid)
-			if ok != tt.wantOK {
-				t.Errorf("NoteByUID(%q) ok = %v, want %v", tt.uid, ok, tt.wantOK)
-			}
-			if ok && got != tt.wantRel {
-				t.Errorf("NoteByUID(%q) = %q, want %q", tt.uid, got, tt.wantRel)
-			}
-		})
-	}
-}
-
-func TestNoteByUIDUsesForwardSlashes(t *testing.T) {
-	s := singleEntryStore(9201, day(2026, 3, 31), "todo", "", nil)
-	idx := New(s, nil)
-	if err := idx.Build(); err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	got, ok := idx.NoteByUID("20260331_9201")
+	got, ok := idx.Resolve("9201")
 	if !ok {
-		t.Fatal("expected UID to be found")
+		t.Fatal("Resolve(9201) = !ok, want ok")
 	}
-	if strings.Contains(got, "\\") {
-		t.Errorf("rel-path %q contains backslash; expected forward slashes only", got)
+	if want := "2026/03/20260331_9201_todo.md"; got != want {
+		t.Errorf("Resolve(9201) = %q, want %q", got, want)
 	}
 }
 
-func TestNoteByUIDMalformed(t *testing.T) {
+func TestResolveBySlug(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 9201, Meta: note.Meta{CreatedAt: day(2026, 3, 31), Slug: "todo"}})
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got, ok := idx.Resolve("todo")
+	if !ok {
+		t.Fatal("Resolve(todo) = !ok, want ok")
+	}
+	if want := "2026/03/20260331_9201_todo.md"; got != want {
+		t.Errorf("Resolve(todo) = %q, want %q", got, want)
+	}
+}
+
+func TestResolveSlugCollisionPicksNewest(t *testing.T) {
+	s := note.NewMemStore()
+	// Two notes with the same slug; newer one should win.
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Slug: "weekly"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 6, 1), Slug: "weekly"}})
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got, ok := idx.Resolve("weekly")
+	if !ok {
+		t.Fatal("Resolve(weekly) = !ok, want ok")
+	}
+	want := "2026/06/20260601_2_weekly.md"
+	if got != want {
+		t.Errorf("Resolve(weekly) = %q, want %q (newest)", got, want)
+	}
+}
+
+func TestResolveAliasFallback(t *testing.T) {
+	s := note.NewMemStore()
+	// Note has no slug but has an alias.
+	putEntry(s, note.Entry{ID: 42, Meta: note.Meta{
+		CreatedAt: day(2026, 2, 15),
+		Aliases:   []string{"kubernetes"},
+	}})
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got, ok := idx.Resolve("kubernetes")
+	if !ok {
+		t.Fatal("Resolve(kubernetes) = !ok, want ok")
+	}
+	want := "2026/02/20260215_42.md"
+	if got != want {
+		t.Errorf("Resolve(kubernetes) = %q, want %q", got, want)
+	}
+}
+
+func TestResolveAliasCollisionPicksNewest(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 10, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Aliases: []string{"k8s"}}})
+	putEntry(s, note.Entry{ID: 20, Meta: note.Meta{CreatedAt: day(2026, 9, 1), Aliases: []string{"k8s"}}})
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got, ok := idx.Resolve("k8s")
+	if !ok {
+		t.Fatal("Resolve(k8s) = !ok, want ok")
+	}
+	want := "2026/09/20260901_20.md"
+	if got != want {
+		t.Errorf("Resolve(k8s) = %q, want %q (newest)", got, want)
+	}
+}
+
+func TestResolveNotFound(t *testing.T) {
 	idx := New(note.NewMemStore(), nil)
-	if _, ok := idx.NoteByUID("nounderscore"); ok {
-		t.Error("NoteByUID(no underscore) should return false")
+	if _, ok := idx.Resolve("nonexistent"); ok {
+		t.Error("Resolve(nonexistent) = ok, want !ok")
 	}
-	if _, ok := idx.NoteByUID("20260331_abc"); ok {
-		t.Error("NoteByUID(non-numeric id) should return false")
+	if _, ok := idx.Resolve(""); ok {
+		t.Error("Resolve('') = ok, want !ok")
 	}
-	if _, ok := idx.NoteByUID(""); ok {
-		t.Error("NoteByUID('') should return false")
+	if _, ok := idx.Resolve("0"); ok {
+		t.Error("Resolve(0) = ok, want !ok (zero is not a valid ID)")
+	}
+}
+
+func TestResolveIDZeroInvalid(t *testing.T) {
+	// ID 0 is never stored; Resolve("0") must return false.
+	idx := New(note.NewMemStore(), nil)
+	if _, ok := idx.Resolve("0"); ok {
+		t.Error("Resolve(0) = ok, want !ok")
+	}
+}
+
+// --- NoteByID ---
+
+func TestNoteByID(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 9201, Meta: note.Meta{CreatedAt: day(2026, 3, 31), Slug: "todo"}})
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got, ok := idx.NoteByID(9201)
+	if !ok {
+		t.Fatal("NoteByID(9201) = !ok, want ok")
+	}
+	if want := "2026/03/20260331_9201_todo.md"; got != want {
+		t.Errorf("NoteByID(9201) = %q, want %q", got, want)
+	}
+	if _, ok := idx.NoteByID(0); ok {
+		t.Error("NoteByID(0) = ok, want !ok")
 	}
 }
 
@@ -145,11 +214,11 @@ func TestBuildSkipsUnreadableMonthDir(t *testing.T) {
 	if err := idx.Build(); err != nil {
 		t.Fatalf("Build returned unexpected error: %v", err)
 	}
-	if _, ok := idx.NoteByUID("20260331_9201"); !ok {
-		t.Error("expected 20260331_9201 to be indexed")
+	if _, ok := idx.Resolve("9201"); !ok {
+		t.Error("expected note 9201 to be indexed")
 	}
-	if _, ok := idx.NoteByUID("20260401_0001"); ok {
-		t.Error("expected 20260401_0001 to be skipped (unreadable dir)")
+	if _, ok := idx.NoteByID(1); ok {
+		t.Error("expected note 1 to be skipped (unreadable dir)")
 	}
 }
 
@@ -244,6 +313,130 @@ func TestNotesByTagSortedRelPaths(t *testing.T) {
 	}
 }
 
+// --- Types ---
+
+func TestTypesSorted(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Type: "journal"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Type: "task"}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 1, 3), Type: "journal"}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.Types()
+	want := []string{"journal", "task"}
+	if len(got) != len(want) {
+		t.Fatalf("Types() = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("Types()[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestNotesByType(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1), Type: "journal"}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 2), Type: "task"}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 1, 3), Type: "journal"}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := idx.NotesByType("journal"); len(got) != 2 {
+		t.Errorf("NotesByType(journal) = %v, want 2 entries", got)
+	}
+	if got := idx.NotesByType("task"); len(got) != 1 {
+		t.Errorf("NotesByType(task) = %v, want 1 entry", got)
+	}
+	none := idx.NotesByType("nonexistent")
+	if none == nil {
+		t.Error("NotesByType(nonexistent) = nil, want non-nil empty slice")
+	}
+	if len(none) != 0 {
+		t.Errorf("NotesByType(nonexistent) = %v, want empty", none)
+	}
+}
+
+// --- Dates ---
+
+func TestDatesSorted(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 3, 31)}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 1, 1)}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 6, 15)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.Dates()
+	want := []string{"20260101", "20260331", "20260615"}
+	if len(got) != len(want) {
+		t.Fatalf("Dates() = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("Dates()[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestNotesByDatePrefixYear(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 1, 1)}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 6, 15)}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2025, 12, 31)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.NotesByDatePrefix("2026")
+	if len(got) != 2 {
+		t.Errorf("NotesByDatePrefix(2026) = %v, want 2 entries", got)
+	}
+	got2025 := idx.NotesByDatePrefix("2025")
+	if len(got2025) != 1 {
+		t.Errorf("NotesByDatePrefix(2025) = %v, want 1 entry", got2025)
+	}
+}
+
+func TestNotesByDatePrefixMonth(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 3, 1)}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 3, 31)}})
+	putEntry(s, note.Entry{ID: 3, Meta: note.Meta{CreatedAt: day(2026, 4, 1)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.NotesByDatePrefix("202603")
+	if len(got) != 2 {
+		t.Errorf("NotesByDatePrefix(202603) = %v, want 2 entries", got)
+	}
+}
+
+func TestNotesByDatePrefixDay(t *testing.T) {
+	s := note.NewMemStore()
+	putEntry(s, note.Entry{ID: 1, Meta: note.Meta{CreatedAt: day(2026, 3, 31)}})
+	putEntry(s, note.Entry{ID: 2, Meta: note.Meta{CreatedAt: day(2026, 3, 30)}})
+
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := idx.NotesByDatePrefix("20260331")
+	if len(got) != 1 {
+		t.Errorf("NotesByDatePrefix(20260331) = %v, want 1 entry", got)
+	}
+}
+
 // --- NoteEntryByRel ---
 
 func TestNoteEntryByRel(t *testing.T) {
@@ -268,6 +461,9 @@ func TestNoteEntryByRel(t *testing.T) {
 	}
 	if got.Title != "Nested" {
 		t.Errorf("Title = %q, want Nested", got.Title)
+	}
+	if got.ID != 9201 {
+		t.Errorf("ID = %d, want 9201", got.ID)
 	}
 
 	if _, ok := idx.NoteEntryByRel("missing.md"); ok {
@@ -401,30 +597,18 @@ func TestNoteEntryDate(t *testing.T) {
 	}
 }
 
-// --- IsUID ---
-
-func TestIsUID(t *testing.T) {
-	tests := []struct {
-		s    string
-		want bool
-	}{
-		{"20260331_9201", true},
-		{"20261231_0001", true},
-		{"12026_0001", true},
-		{"12345_0001", true},
-		{"2026_0001", false},
-		{"1234_0001", false},
-		{"20260331_", false},
-		{"20260331_abc", false},
-		{"hello_world", false},
-		{"202603319201", false},
+func TestNoteEntryID(t *testing.T) {
+	s := singleEntryStore(9201, day(2026, 3, 31), "todo", "", nil)
+	idx := New(s, nil)
+	if err := idx.Build(); err != nil {
+		t.Fatalf("Build: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.s, func(t *testing.T) {
-			if got := IsUID(tt.s); got != tt.want {
-				t.Errorf("IsUID(%q) = %v, want %v", tt.s, got, tt.want)
-			}
-		})
+	e, ok := idx.NoteEntryByRel("2026/03/20260331_9201_todo.md")
+	if !ok {
+		t.Fatal("NoteEntryByRel = !ok")
+	}
+	if e.ID != 9201 {
+		t.Errorf("ID = %d, want 9201", e.ID)
 	}
 }
 
