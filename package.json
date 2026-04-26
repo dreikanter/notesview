@@ -12,7 +12,7 @@
     "htmx-ext-sse": "^2.2.4",
     "htmx.org": "^2.0.10",
     "tailwindcss": "^4.2.4",
-    "vite": "^8.0.9",
+    "vite": "^8.0.10",
     "vitest": "^4.1.5"
   },
   "scripts": {

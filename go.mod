@@ -1,9 +1,9 @@
 module github.com/dreikanter/nview
 
-go 1.25.7
+go 1.26.2
 
 require (
-	github.com/dreikanter/notesctl v0.3.25
+	github.com/dreikanter/notesctl v0.3.26
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.8.2
