@@ -32,6 +32,7 @@ function openEventStream(noteID) {
   if (es && watchedNoteID === noteID) return
   if (es) es.close()
   watchedNoteID = noteID
+  window.__nviewWatchedNoteID = noteID
   const url = noteID > 0
     ? '/events?scope=note&id=' + encodeURIComponent(noteID)
     : '/events?scope=list'

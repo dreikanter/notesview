@@ -28,12 +28,12 @@ test.describe('Metadata sidebar', () => {
   test('tag filter opens tagged note listing and stops watching notes', async ({ page }) => {
     await page.goto('/n/readme')
     await page.click('#sidebar-toggle')
-    await page.waitForFunction(() => (window as any).__tvWatchedNote === '2026/01/20260101_1_readme.md')
+    await page.waitForFunction(() => (window as any).__nviewWatchedNoteID === 1)
     await page.locator('#tags-content a', { hasText: 'daily' }).click()
     await expect(page.locator('#dir-listing')).toBeVisible()
     await expect(page.locator('#dir-listing')).toContainText('Day One')
     await expect(page).toHaveURL(/\/tags\/daily/)
-    expect(await page.evaluate(() => (window as any).__tvWatchedNote as string)).toBe('')
+    expect(await page.evaluate(() => (window as any).__nviewWatchedNoteID as number)).toBe(0)
   })
 
   test('type and date quick links render index pages', async ({ page }) => {
