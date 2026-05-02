@@ -3,7 +3,7 @@ module github.com/dreikanter/nview
 go 1.26.2
 
 require (
-	github.com/dreikanter/notes v0.3.30-0.20260502093346-79c50e4c31e1
+	github.com/dreikanter/notes v0.3.30
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.8.2
